@@ -1,15 +1,17 @@
 import { Component, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SupabaseService } from '../../core/services/supabase.service';
 import { Esp32LocalService } from '../../core/services/esp32-local.service';
+import { GeminiTokenService } from '../../core/services/gemini-token.service';
+import { GeminiChatService } from '../../core/services/gemini-chat.service';
 import { ConfiguracionSistema } from '../../core/models/tanque.model';
 import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-settings',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, DatePipe],
   template: `
     <div class="scada-settings">
       <header class="settings-toolbar">
@@ -135,6 +137,79 @@ import { environment } from '../../../environments/environment';
               @if (resultadoEsp32()) {
                 <span class="test-badge" [class.ok]="exitoEsp32()">
                   {{ resultadoEsp32() }}
+                </span>
+              }
+            </div>
+          </div>
+        </section>
+
+        <!-- Tarjeta 3: Asistente IA Gemini (token solo en navegador por 3 dias) -->
+        <section class="config-panel">
+          <div class="panel-head">
+            <span class="panel-idx">03</span>
+            <h3 class="panel-name">Asistente IA ({{ modeloGemini }})</h3>
+          </div>
+
+          <div class="panel-body">
+            <div class="ai-status-box mono-val" [class.active]="geminiToken.tieneTokenActivo()">
+              @if (geminiToken.tieneTokenActivo()) {
+                <span>Activo: {{ geminiToken.tokenEnmascarado() }}</span>
+                <span>Expira: {{ geminiToken.expiraEnDate() | date:'dd/MM/yyyy HH:mm':'-0500' }} ({{ geminiToken.tiempoRestanteTexto() }})</span>
+              } @else {
+                <span>Sin token activo o expirado</span>
+              }
+            </div>
+
+            <div class="input-block">
+              <label for="geminiKey">API Key de Google AI Studio (vigencia {{ diasTokenGemini }} dias):</label>
+              <input
+                id="geminiKey"
+                type="password"
+                class="mono-val"
+                [ngModel]="geminiTokenInput()"
+                (ngModelChange)="geminiTokenInput.set($event)"
+                placeholder="AIzaSy..."
+                autocomplete="off"
+              />
+              <span class="input-hint">
+                Se guarda unicamente en este navegador por 72 horas. Nunca se almacena en el codigo ni se envia a Supabase.
+              </span>
+            </div>
+
+            <div class="test-block">
+              <div class="ai-btn-row">
+                <button
+                  type="button"
+                  class="btn-test"
+                  (click)="probarGemini()"
+                  [disabled]="probandoGemini() || (!geminiTokenInput().trim() && !geminiToken.tieneTokenActivo())"
+                >
+                  {{ probandoGemini() ? 'Verificando...' : 'Probar Token Gemini' }}
+                </button>
+
+                <button
+                  type="button"
+                  class="btn-test btn-save-token"
+                  (click)="guardarTokenGemini()"
+                  [disabled]="!geminiTokenInput().trim()"
+                >
+                  Guardar Token ({{ diasTokenGemini }} dias)
+                </button>
+
+                @if (geminiToken.tieneTokenActivo()) {
+                  <button
+                    type="button"
+                    class="btn-test btn-revoke"
+                    (click)="eliminarTokenGemini()"
+                  >
+                    Eliminar Token
+                  </button>
+                }
+              </div>
+
+              @if (resultadoGemini()) {
+                <span class="test-badge" [class.ok]="exitoGemini()">
+                  {{ resultadoGemini() }}
                 </span>
               }
             </div>
@@ -366,6 +441,40 @@ import { environment } from '../../../environments/environment';
       opacity: 0.9;
     }
 
+    .ai-status-box {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      background-color: var(--status-warn-bg);
+      border: 1px solid var(--status-warn-border);
+      color: var(--status-warn);
+    }
+
+    .ai-status-box.active {
+      background-color: var(--status-normal-bg);
+      border-color: var(--status-normal-border);
+      color: var(--status-normal);
+    }
+
+    .ai-btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .btn-save-token {
+      border-color: var(--status-info-border);
+      color: var(--status-info);
+    }
+
+    .btn-revoke {
+      border-color: var(--status-crit-border);
+      color: var(--status-crit);
+    }
+
     @media (max-width: 600px) {
       .settings-actions-bar {
         flex-direction: column-reverse;
@@ -381,7 +490,11 @@ import { environment } from '../../../environments/environment';
 export class SettingsComponent {
   readonly supabase = inject(SupabaseService);
   readonly esp32Local = inject(Esp32LocalService);
+  readonly geminiToken = inject(GeminiTokenService);
+  readonly geminiChat = inject(GeminiChatService);
 
+  readonly modeloGemini = environment.geminiModel;
+  readonly diasTokenGemini = environment.geminiTokenTtlDias;
   readonly formData: ConfiguracionSistema = { ...this.supabase.configuracion() };
 
   readonly mensajeGuardado = signal<string | null>(null);
@@ -393,6 +506,15 @@ export class SettingsComponent {
   readonly probandoEsp32 = signal<boolean>(false);
   readonly resultadoEsp32 = signal<string | null>(null);
   readonly exitoEsp32 = signal<boolean>(false);
+
+  readonly geminiTokenInput = signal<string>('');
+  readonly probandoGemini = signal<boolean>(false);
+  readonly resultadoGemini = signal<string | null>(null);
+  readonly exitoGemini = signal<boolean>(false);
+
+  constructor() {
+    this.geminiToken.verificarVigencia();
+  }
 
   async probarSupabase(): Promise<void> {
     this.probandoSupabase.set(true);
@@ -448,5 +570,40 @@ export class SettingsComponent {
     this.formData.intervaloRefrescoSeg = 15;
     this.formData.modoTanque = 'prototipo_7l';
     this.guardarConfiguracion();
+  }
+
+  async probarGemini(): Promise<void> {
+    const tokenAProbar = this.geminiTokenInput().trim() || this.geminiToken.obtenerTokenValido() || '';
+    if (!tokenAProbar) return;
+
+    this.probandoGemini.set(true);
+    this.resultadoGemini.set(null);
+    try {
+      const res = await this.geminiChat.probarConexionToken(tokenAProbar);
+      this.exitoGemini.set(res.ok);
+      this.resultadoGemini.set(res.mensaje);
+    } finally {
+      this.probandoGemini.set(false);
+    }
+  }
+
+  guardarTokenGemini(): void {
+    const ok = this.geminiToken.guardarToken(this.geminiTokenInput());
+    if (!ok) {
+      this.exitoGemini.set(false);
+      this.resultadoGemini.set('Ingresa una API key valida (minimo 10 caracteres).');
+      return;
+    }
+
+    this.geminiTokenInput.set('');
+    this.exitoGemini.set(true);
+    this.resultadoGemini.set(`Token guardado localmente por ${this.diasTokenGemini} dias.`);
+  }
+
+  eliminarTokenGemini(): void {
+    this.geminiToken.eliminarToken();
+    this.geminiTokenInput.set('');
+    this.exitoGemini.set(true);
+    this.resultadoGemini.set('Token eliminado del navegador.');
   }
 }

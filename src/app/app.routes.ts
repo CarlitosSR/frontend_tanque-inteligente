@@ -17,6 +17,11 @@ export const routes: Routes = [
       import('./features/history/history.component').then((m) => m.HistoryComponent)
   },
   {
+    path: 'chat',
+    loadComponent: () =>
+      import('./features/chat/chat.component').then((m) => m.ChatComponent)
+  },
+  {
     path: 'settings',
     loadComponent: () =>
       import('./features/settings/settings.component').then((m) => m.SettingsComponent)

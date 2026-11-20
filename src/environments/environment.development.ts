@@ -6,5 +6,8 @@ export const environment = {
   esp32DefaultIp: '',
   tanquePrototipoCapacidadLitros: 7.0,
   tanqueRealCapacidadLitros: 1100.0,
-  limiteMinsaTurbidezNtu: 5.0
+  limiteMinsaTurbidezNtu: 5.0,
+  geminiModel: 'gemini-3.8-flash',
+  geminiApiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
+  geminiTokenTtlDias: 3
 };
