@@ -94,3 +94,171 @@ body {
 button, a {
   -webkit-tap-highlight-color: transparent;
 }
+
+/* Estilos SCADA para respuestas Markdown (GFM) del asistente IA */
+.scada-md {
+  white-space: normal;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  line-height: 1.55;
+}
+
+.scada-md > :first-child {
+  margin-top: 0;
+}
+
+.scada-md > :last-child {
+  margin-bottom: 0;
+}
+
+.scada-md p {
+  margin: 0 0 8px 0;
+}
+
+.scada-md h1,
+.scada-md h2,
+.scada-md h3,
+.scada-md h4 {
+  margin: 12px 0 6px 0;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.scada-md h1 {
+  font-size: 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 4px;
+}
+
+.scada-md h2 {
+  font-size: 0.94rem;
+}
+
+.scada-md h3,
+.scada-md h4 {
+  font-size: 0.88rem;
+  color: var(--status-info);
+}
+
+.scada-md strong {
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.scada-md em {
+  color: var(--text-secondary);
+}
+
+.scada-md ul,
+.scada-md ol {
+  margin: 4px 0 10px 0;
+  padding-left: 20px;
+}
+
+.scada-md li {
+  margin: 3px 0;
+}
+
+.scada-md li > p {
+  margin: 0 0 4px 0;
+}
+
+.scada-md li > p:last-child {
+  margin-bottom: 0;
+}
+
+.scada-md li > ul,
+.scada-md li > ol {
+  margin: 4px 0 4px 0;
+}
+
+.scada-md blockquote {
+  margin: 8px 0;
+  padding: 6px 12px;
+  border-left: 3px solid var(--status-info);
+  background-color: var(--bg-surface);
+  border-radius: 0 4px 4px 0;
+  color: var(--text-secondary);
+}
+
+.scada-md code {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  background-color: var(--bg-surface-raised);
+  border: 1px solid var(--border-subtle);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--water-clean);
+}
+
+.scada-md pre {
+  margin: 8px 0;
+  padding: 10px 12px;
+  background-color: #060a14;
+  border: 1px solid var(--border-medium);
+  border-radius: 5px;
+  overflow-x: auto;
+}
+
+.scada-md pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--text-primary);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.scada-md hr {
+  border: none;
+  border-top: 1px solid var(--border-medium);
+  margin: 10px 0;
+}
+
+.scada-md a {
+  color: var(--status-info);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.scada-md .md-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin: 8px 0;
+  border: 1px solid var(--border-medium);
+  border-radius: 5px;
+}
+
+.scada-md table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.scada-md th,
+.scada-md td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scada-md th {
+  background-color: var(--bg-surface-raised);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.scada-md tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.scada-md tbody tr:nth-child(even) td {
+  background-color: rgba(255, 255, 255, 0.02);
+}

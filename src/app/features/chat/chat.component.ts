@@ -11,12 +11,13 @@ import { FormsModule } from '@angular/forms';
 import { SupabaseService } from '../../core/services/supabase.service';
 import { GroqTokenService } from '../../core/services/groq-token.service';
 import { GroqChatService } from '../../core/services/groq-chat.service';
+import { MarkdownChatPipe } from './markdown-chat.pipe';
 import { environment } from '../../../environments/environment';
 
 @Component({
   selector: 'app-chat',
   standalone: true,
-  imports: [FormsModule, DatePipe, DecimalPipe],
+  imports: [FormsModule, DatePipe, DecimalPipe, MarkdownChatPipe],
   templateUrl: './chat.component.html',
   styleUrl: './chat.component.css'
 })

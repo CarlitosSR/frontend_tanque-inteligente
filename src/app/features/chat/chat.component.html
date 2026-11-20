@@ -203,7 +203,11 @@
                   <span class="msg-time mono-val">{{ msg.timestamp | date:'HH:mm:ss' }}</span>
                 </div>
 
-                <div class="msg-body">{{ msg.texto }}</div>
+                @if (msg.rol === 'asistente') {
+                  <div class="msg-body scada-md" [innerHTML]="msg.texto | markdownChat"></div>
+                } @else {
+                  <div class="msg-body">{{ msg.texto }}</div>
+                }
 
                 @if (msg.rol === 'asistente' && msg.contextoTimestamp) {
                   <div class="msg-context-foot mono-val">
