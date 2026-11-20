@@ -1,5 +1,5 @@
-// Registro persistido localmente en el navegador para el token de Gemini
-export interface GeminiTokenRegistro {
+// Registro persistido localmente en el navegador para el token de Groq API
+export interface GroqTokenRegistro {
   token: string;
   creadoEn: number;
   expiraEn: number;
@@ -12,47 +12,57 @@ export interface ChatMensaje {
   texto: string;
   timestamp: Date;
   contextoTimestamp?: string | null;
+  modeloUsado?: string;
 }
 
-// Resultado de validacion de conectividad contra el endpoint de Gemini
+// Resultado de validacion de conectividad contra Groq API
 export interface ResultadoPruebaToken {
   ok: boolean;
   mensaje: string;
 }
 
-// Estructuras de contrato REST para Gemini API v1beta generateContent
-export interface GeminiParte {
-  text: string;
+// Contratos REST compatibles con OpenAI Chat Completions (Groq API)
+export type GroqRol = 'system' | 'user' | 'assistant';
+
+export interface GroqMensajeApi {
+  role: GroqRol;
+  content: string;
 }
 
-export interface GeminiContenido {
-  role: 'user' | 'model';
-  parts: GeminiParte[];
+export interface GroqChatRequest {
+  model: string;
+  messages: GroqMensajeApi[];
+  temperature?: number;
+  max_completion_tokens?: number;
+  stream: false;
 }
 
-export interface GeminiGenerateRequest {
-  system_instruction: {
-    parts: GeminiParte[];
-  };
-  contents: GeminiContenido[];
-  generationConfig?: {
-    temperature?: number;
-    maxOutputTokens?: number;
-  };
-}
-
-export interface GeminiGenerateResponse {
-  candidates?: Array<{
-    content?: {
-      parts?: Array<{
-        text?: string;
-      }>;
+export interface GroqChatResponse {
+  id?: string;
+  model?: string;
+  choices?: Array<{
+    index?: number;
+    message?: {
+      role?: string;
+      content?: string | null;
+      reasoning?: string | null;
     };
-    finishReason?: string;
+    finish_reason?: string | null;
   }>;
   error?: {
-    code?: number;
     message?: string;
-    status?: string;
+    type?: string;
+    code?: string;
+  };
+}
+
+export interface GroqModelsResponse {
+  data?: Array<{
+    id: string;
+  }>;
+  error?: {
+    message?: string;
+    type?: string;
+    code?: string;
   };
 }

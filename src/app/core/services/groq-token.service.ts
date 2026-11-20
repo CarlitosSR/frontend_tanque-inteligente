@@ -1,25 +1,27 @@
 import { Injectable, signal, computed, inject, DestroyRef } from '@angular/core';
 import { environment } from '../../../environments/environment';
-import { GeminiTokenRegistro } from '../models/chatbot.model';
+import { GroqTokenRegistro } from '../models/chatbot.model';
 
-export const STORAGE_KEY_GEMINI_TOKEN = 'tanque_inteligente_gemini_token';
+export const STORAGE_KEY_GROQ_TOKEN = 'tanque_inteligente_groq_token';
+const LEGACY_STORAGE_KEY_GEMINI_TOKEN = 'tanque_inteligente_gemini_token';
 const MS_POR_DIA = 24 * 60 * 60 * 1000;
-export const GEMINI_TOKEN_TTL_MS = environment.geminiTokenTtlDias * MS_POR_DIA;
+export const GROQ_TOKEN_TTL_MS = environment.groqTokenTtlDias * MS_POR_DIA;
+const MIN_LONGITUD_TOKEN_GROQ = 20;
 
 @Injectable({
   providedIn: 'root'
 })
-export class GeminiTokenService {
+export class GroqTokenService {
   private readonly destroyRef = inject(DestroyRef);
 
   // Registro activo en memoria sincronizado con localStorage
-  private readonly registro = signal<GeminiTokenRegistro | null>(this.cargarDesdeStorage());
+  private readonly registro = signal<GroqTokenRegistro | null>(this.cargarDesdeStorage());
 
   // Marca de tiempo reactiva para recalcular vigencia sin recargar la pagina
   private readonly ahoraMs = signal<number>(Date.now());
   private vigenciaTimer: number | null = null;
 
-  // Indica si existe un token vigente (no expirado)
+  // Indica si existe un token de Groq vigente (no expirado)
   readonly tieneTokenActivo = computed<boolean>(() => {
     const reg = this.registro();
     if (!reg) return false;
@@ -61,6 +63,7 @@ export class GeminiTokenService {
   });
 
   constructor() {
+    this.limpiarClaveHeredadaGemini();
     this.iniciarControlVigencia();
 
     this.destroyRef.onDestroy(() => {
@@ -71,22 +74,28 @@ export class GeminiTokenService {
     });
   }
 
+  // Valida que la clave tenga formato de API Key de Groq (prefijo gsk_)
+  esFormatoValido(tokenRaw: string): boolean {
+    const limpio = tokenRaw.trim();
+    return limpio.startsWith('gsk_') && limpio.length >= MIN_LONGITUD_TOKEN_GROQ;
+  }
+
   // Guarda el token unicamente en el navegador con caducidad de 3 dias
   guardarToken(tokenRaw: string): boolean {
     const limpio = tokenRaw.trim();
-    if (limpio.length < 10) {
+    if (!this.esFormatoValido(limpio)) {
       return false;
     }
 
     const ahora = Date.now();
-    const nuevoRegistro: GeminiTokenRegistro = {
+    const nuevoRegistro: GroqTokenRegistro = {
       token: limpio,
       creadoEn: ahora,
-      expiraEn: ahora + GEMINI_TOKEN_TTL_MS
+      expiraEn: ahora + GROQ_TOKEN_TTL_MS
     };
 
     try {
-      localStorage.setItem(STORAGE_KEY_GEMINI_TOKEN, JSON.stringify(nuevoRegistro));
+      localStorage.setItem(STORAGE_KEY_GROQ_TOKEN, JSON.stringify(nuevoRegistro));
     } catch {
       return false;
     }
@@ -117,7 +126,7 @@ export class GeminiTokenService {
   // Elimina el token del almacenamiento local y limpia las senales
   eliminarToken(): void {
     try {
-      localStorage.removeItem(STORAGE_KEY_GEMINI_TOKEN);
+      localStorage.removeItem(STORAGE_KEY_GROQ_TOKEN);
     } catch {
       // Ignorar errores de acceso al almacenamiento
     }
@@ -135,25 +144,36 @@ export class GeminiTokenService {
     }
   }
 
-  // Lee y valida el registro guardado en localStorage al iniciar el servicio
-  private cargarDesdeStorage(): GeminiTokenRegistro | null {
+  // Elimina la clave antigua de Gemini para evitar residuos en el navegador
+  private limpiarClaveHeredadaGemini(): void {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY_GEMINI_TOKEN);
+      if (localStorage.getItem(LEGACY_STORAGE_KEY_GEMINI_TOKEN) !== null) {
+        localStorage.removeItem(LEGACY_STORAGE_KEY_GEMINI_TOKEN);
+      }
+    } catch {
+      // Ignorar fallo de acceso a localStorage
+    }
+  }
+
+  // Lee y valida el registro guardado en localStorage al iniciar el servicio
+  private cargarDesdeStorage(): GroqTokenRegistro | null {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_GROQ_TOKEN);
       if (!raw) return null;
 
-      const parsed = JSON.parse(raw) as Partial<GeminiTokenRegistro>;
+      const parsed = JSON.parse(raw) as Partial<GroqTokenRegistro>;
       if (
         typeof parsed.token !== 'string' ||
         typeof parsed.creadoEn !== 'number' ||
         typeof parsed.expiraEn !== 'number' ||
-        parsed.token.trim().length < 10
+        !this.esFormatoValido(parsed.token)
       ) {
-        localStorage.removeItem(STORAGE_KEY_GEMINI_TOKEN);
+        localStorage.removeItem(STORAGE_KEY_GROQ_TOKEN);
         return null;
       }
 
       if (Date.now() >= parsed.expiraEn) {
-        localStorage.removeItem(STORAGE_KEY_GEMINI_TOKEN);
+        localStorage.removeItem(STORAGE_KEY_GROQ_TOKEN);
         return null;
       }
 
@@ -164,7 +184,7 @@ export class GeminiTokenService {
       };
     } catch {
       try {
-        localStorage.removeItem(STORAGE_KEY_GEMINI_TOKEN);
+        localStorage.removeItem(STORAGE_KEY_GROQ_TOKEN);
       } catch {
         // Ignorar fallo secundario
       }

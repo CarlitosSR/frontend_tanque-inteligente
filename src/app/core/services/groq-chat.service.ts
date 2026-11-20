@@ -2,29 +2,57 @@ import { Injectable, inject, signal } from '@angular/core';
 import { environment } from '../../../environments/environment';
 import { SupabaseService } from './supabase.service';
 import { Esp32LocalService } from './esp32-local.service';
-import { GeminiTokenService } from './gemini-token.service';
+import { GroqTokenService } from './groq-token.service';
 import {
   ChatMensaje,
-  GeminiContenido,
-  GeminiGenerateRequest,
-  GeminiGenerateResponse,
+  GroqChatRequest,
+  GroqChatResponse,
+  GroqMensajeApi,
+  GroqModelsResponse,
   ResultadoPruebaToken
 } from '../models/chatbot.model';
 import { HistorialTanque } from '../models/tanque.model';
 
-const MAX_MENSAJES_HISTORIAL_API = 12;
+const MAX_MENSAJES_HISTORIAL_API = 10;
+const TIMEOUT_CHAT_MS = 20000;
+const TIMEOUT_MODELS_MS = 8000;
+const STORAGE_KEY_GROQ_MODEL = 'tanque_inteligente_groq_model';
+
+interface ResultadoCompletacion {
+  ok: boolean;
+  status: number;
+  texto?: string;
+  modeloEfectivo: string;
+  detalleError?: string;
+}
 
 @Injectable({
   providedIn: 'root'
 })
-export class GeminiChatService {
+export class GroqChatService {
   private readonly supabase = inject(SupabaseService);
   private readonly esp32Local = inject(Esp32LocalService);
-  private readonly tokenService = inject(GeminiTokenService);
+  private readonly tokenService = inject(GroqTokenService);
+
+  readonly modelosDisponibles: readonly string[] = environment.groqAvailableModels;
+  readonly modeloSeleccionado = signal<string>(this.cargarModeloInicial());
 
   readonly mensajes = signal<ChatMensaje[]>([]);
   readonly enviando = signal<boolean>(false);
   readonly errorChat = signal<string | null>(null);
+
+  // Actualiza el modelo activo de Groq dentro de la lista permitida
+  seleccionarModelo(modelo: string): void {
+    if (!this.modelosDisponibles.includes(modelo)) {
+      return;
+    }
+    this.modeloSeleccionado.set(modelo);
+    try {
+      localStorage.setItem(STORAGE_KEY_GROQ_MODEL, modelo);
+    } catch {
+      // Ignorar fallo de almacenamiento
+    }
+  }
 
   // Construye el system prompt con inyeccion dinamica de telemetria en vivo e historial
   construirSystemPrompt(): string {
@@ -95,7 +123,7 @@ export class GeminiChatService {
     ].join('\n');
   }
 
-  // Envia una pregunta del usuario a Gemini 3.8 Flash con el contexto actual inyectado
+  // Envia la consulta del operador a Groq API con telemetria en vivo y fallback automatico ante 5xx/404
   async enviarMensaje(textoUsuario: string): Promise<void> {
     const pregunta = textoUsuario.trim();
     if (!pregunta || this.enviando()) {
@@ -104,13 +132,12 @@ export class GeminiChatService {
 
     const token = this.tokenService.obtenerTokenValido();
     if (!token) {
-      this.errorChat.set('Tu token de Gemini no esta configurado o expiro (vigencia 3 dias). Ingresa un token para continuar.');
+      this.errorChat.set('Tu token de Groq no esta configurado o expiro (vigencia 3 dias). Ingresa una clave gsk_... para continuar.');
       return;
     }
 
     this.errorChat.set(null);
 
-    // Si aun no hay historial cargado en memoria, intenta traer las ultimas lecturas para enriquecer el prompt
     if (this.supabase.historial().length === 0) {
       await this.supabase.cargarHistorial(25);
     }
@@ -127,50 +154,32 @@ export class GeminiChatService {
     this.enviando.set(true);
 
     const contextoTimestamp = this.supabase.estadoActual()?.updated_at ?? null;
-    const payload: GeminiGenerateRequest = {
-      system_instruction: {
-        parts: [{ text: this.construirSystemPrompt() }]
-      },
-      contents: [
-        ...historialPrevio,
-        {
-          role: 'user',
-          parts: [{ text: pregunta }]
-        }
-      ],
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 1024
-      }
-    };
+    const messages: GroqMensajeApi[] = [
+      { role: 'system', content: this.construirSystemPrompt() },
+      ...historialPrevio,
+      { role: 'user', content: pregunta }
+    ];
 
-    const url = `${environment.geminiApiBaseUrl}/${environment.geminiModel}:generateContent`;
+    const modeloPrincipal = this.modeloSeleccionado();
 
     try {
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': token
-        },
-        body: JSON.stringify(payload),
-        signal: AbortSignal.timeout(30000)
-      });
+      let resultado = await this.ejecutarCompletacion(modeloPrincipal, messages, token);
 
-      const data = (await response.json().catch(() => ({}))) as GeminiGenerateResponse;
+      // Si el modelo principal responde 5xx o 404, reintenta una vez con el modelo alternativo disponible
+      if (!resultado.ok && this.esErrorReintentableConFallback(resultado.status)) {
+        const modeloAlternativo = this.obtenerModeloAlternativo(modeloPrincipal);
+        if (modeloAlternativo) {
+          resultado = await this.ejecutarCompletacion(modeloAlternativo, messages, token);
+        }
+      }
 
-      if (!response.ok) {
-        const msgError = this.interpretarErrorHttp(response.status, data.error?.message);
+      if (!resultado.ok) {
+        const msgError = this.interpretarErrorHttp(resultado.status, resultado.detalleError, resultado.modeloEfectivo);
         this.registrarMensajeError(msgError);
         return;
       }
 
-      const textoRespuesta = data.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text ?? '')
-        .join('')
-        .trim();
-
-      if (!textoRespuesta) {
+      if (!resultado.texto) {
         this.registrarMensajeError('El modelo no devolvio contenido en esta respuesta. Intenta reformular la consulta.');
         return;
       }
@@ -180,48 +189,57 @@ export class GeminiChatService {
         {
           id: this.generarId(),
           rol: 'asistente',
-          texto: textoRespuesta,
+          texto: resultado.texto!,
           timestamp: new Date(),
-          contextoTimestamp
+          contextoTimestamp,
+          modeloUsado: resultado.modeloEfectivo
         }
       ]);
     } catch (err: unknown) {
-      const msg = this.interpretarErrorRed(err);
-      this.registrarMensajeError(msg);
+      this.registrarMensajeError(this.interpretarErrorRed(err));
     } finally {
       this.enviando.set(false);
     }
   }
 
-  // Valida que el token funcione y tenga acceso al modelo gemini-3.8-flash sin consumir cuota de texto
+  // Valida que el token de Groq sea valido mediante GET /openai/v1/models sin consumir cuota
   async probarConexionToken(tokenRaw: string): Promise<ResultadoPruebaToken> {
     const token = tokenRaw.trim();
-    if (token.length < 10) {
-      return { ok: false, mensaje: 'Ingresa un token de API valido (minimo 10 caracteres).' };
+    if (!this.tokenService.esFormatoValido(token)) {
+      return {
+        ok: false,
+        mensaje: 'Ingresa una API Key valida de Groq (debe iniciar con gsk_ y tener al menos 20 caracteres).'
+      };
     }
 
-    const url = `${environment.geminiApiBaseUrl}/${environment.geminiModel}`;
+    const url = `${environment.groqApiBaseUrl}/models`;
 
     try {
       const response = await fetch(url, {
         method: 'GET',
         headers: {
-          'x-goog-api-key': token
+          Authorization: `Bearer ${token}`
         },
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(TIMEOUT_MODELS_MS)
       });
 
+      const data = (await response.json().catch(() => ({}))) as GroqModelsResponse;
+
       if (response.ok) {
+        const ids = (data.data ?? []).map((m) => m.id);
+        const modeloActual = this.modeloSeleccionado();
+        const disponible = ids.includes(modeloActual);
         return {
           ok: true,
-          mensaje: `OK: Token valido y modelo ${environment.geminiModel} accesible.`
+          mensaje: disponible
+            ? `OK: Token Groq valido y modelo ${modeloActual} disponible.`
+            : `OK: Token Groq valido (${ids.length} modelos accesibles).`
         };
       }
 
-      const data = (await response.json().catch(() => ({}))) as GeminiGenerateResponse;
       return {
         ok: false,
-        mensaje: this.interpretarErrorHttp(response.status, data.error?.message)
+        mensaje: this.interpretarErrorHttp(response.status, data.error?.message, this.modeloSeleccionado())
       };
     } catch (err: unknown) {
       return {
@@ -235,6 +253,78 @@ export class GeminiChatService {
   limpiarConversacion(): void {
     this.mensajes.set([]);
     this.errorChat.set(null);
+  }
+
+  // Ejecuta una llamada POST /openai/v1/chat/completions hacia Groq
+  private async ejecutarCompletacion(
+    modelo: string,
+    messages: GroqMensajeApi[],
+    token: string
+  ): Promise<ResultadoCompletacion> {
+    const url = `${environment.groqApiBaseUrl}/chat/completions`;
+    const payload: GroqChatRequest = {
+      model: modelo,
+      messages,
+      temperature: 0.3,
+      max_completion_tokens: 2048,
+      stream: false
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(TIMEOUT_CHAT_MS)
+    });
+
+    const data = (await response.json().catch(() => ({}))) as GroqChatResponse;
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        modeloEfectivo: modelo,
+        detalleError: data.error?.message
+      };
+    }
+
+    const contenidoCrudo = data.choices?.[0]?.message?.content ?? '';
+    const textoLimpio = this.limpiarRespuestaModelo(contenidoCrudo);
+
+    return {
+      ok: true,
+      status: response.status,
+      texto: textoLimpio,
+      modeloEfectivo: data.model || modelo
+    };
+  }
+
+  // Elimina etiquetas <think>...</think> si un modelo de razonamiento las emite en content
+  private limpiarRespuestaModelo(texto: string): string {
+    return texto.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+  }
+
+  private esErrorReintentableConFallback(status: number): boolean {
+    return status === 404 || status === 502 || status === 503 || status === 504;
+  }
+
+  private obtenerModeloAlternativo(modeloActual: string): string | null {
+    return this.modelosDisponibles.find((m) => m !== modeloActual) ?? null;
+  }
+
+  private cargarModeloInicial(): string {
+    try {
+      const guardado = localStorage.getItem(STORAGE_KEY_GROQ_MODEL);
+      if (guardado && environment.groqAvailableModels.includes(guardado)) {
+        return guardado;
+      }
+    } catch {
+      // Usar modelo por defecto si falla lectura
+    }
+    return environment.groqDefaultModel;
   }
 
   // Resume estadisticamente el historial reciente para inyectarlo sin sobrecargar el prompt
@@ -289,14 +379,14 @@ export class GeminiChatService {
     ].join('\n');
   }
 
-  // Convierte los mensajes previos de UI al formato contents de Gemini
-  private construirHistorialApi(mensajes: ChatMensaje[]): GeminiContenido[] {
+  // Convierte los ultimos mensajes de UI al formato messages de OpenAI/Groq
+  private construirHistorialApi(mensajes: ChatMensaje[]): GroqMensajeApi[] {
     return mensajes
       .filter((m) => m.rol === 'usuario' || m.rol === 'asistente')
       .slice(-MAX_MENSAJES_HISTORIAL_API)
       .map((m) => ({
-        role: m.rol === 'usuario' ? 'user' : 'model',
-        parts: [{ text: m.texto }]
+        role: m.rol === 'usuario' ? 'user' : 'assistant',
+        content: m.texto
       }));
   }
 
@@ -313,27 +403,30 @@ export class GeminiChatService {
     ]);
   }
 
-  private interpretarErrorHttp(status: number, detalleApi?: string): string {
-    if (status === 400 || status === 401 || status === 403) {
-      return `Token de Gemini invalido, revocado o sin permisos (${status}). Verifica tu API key en Google AI Studio.`;
+  private interpretarErrorHttp(status: number, detalleApi?: string, modelo?: string): string {
+    if (status === 401 || status === 403) {
+      return `Token de Groq invalido, revocado o sin permisos (HTTP ${status}). Verifica tu API Key gsk_... en console.groq.com.`;
     }
     if (status === 404) {
-      return `Modelo ${environment.geminiModel} no disponible para esta clave (HTTP 404).`;
+      return `Modelo ${modelo || this.modeloSeleccionado()} no disponible en Groq (HTTP 404). Prueba seleccionando otro modelo.`;
     }
     if (status === 429) {
-      return 'Limite de cuota o solicitudes alcanzado en la API de Gemini (HTTP 429). Espera unos segundos e intenta nuevamente.';
+      return 'Limite de cuota o solicitudes por minuto alcanzado en Groq (HTTP 429). Espera unos segundos o cambia al modelo qwen/qwen3.8-27b.';
+    }
+    if (status >= 500) {
+      return `Error temporal en los servidores de Groq (HTTP ${status}). Intenta nuevamente en unos segundos.`;
     }
     return detalleApi
-      ? `Error de Gemini API (HTTP ${status}): ${detalleApi}`
-      : `Error inesperado al consultar Gemini API (HTTP ${status}).`;
+      ? `Error de Groq API (HTTP ${status}): ${detalleApi}`
+      : `Error inesperado al consultar Groq API (HTTP ${status}).`;
   }
 
   private interpretarErrorRed(err: unknown): string {
     if (err instanceof DOMException && err.name === 'TimeoutError') {
-      return 'Tiempo de espera agotado al contactar con la API de Gemini. Revisa tu conexion a internet.';
+      return 'Tiempo de espera agotado (20s) al contactar con Groq API. Revisa tu conexion a internet o cambia de modelo.';
     }
     const msg = err instanceof Error ? err.message : String(err);
-    return `No se pudo establecer conexion con la API de Gemini (${msg}).`;
+    return `No se pudo establecer conexion con Groq API (${msg}).`;
   }
 
   private generarId(): string {

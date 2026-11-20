@@ -9,8 +9,8 @@ import {
 import { DatePipe, DecimalPipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SupabaseService } from '../../core/services/supabase.service';
-import { GeminiTokenService } from '../../core/services/gemini-token.service';
-import { GeminiChatService } from '../../core/services/gemini-chat.service';
+import { GroqTokenService } from '../../core/services/groq-token.service';
+import { GroqChatService } from '../../core/services/groq-chat.service';
 import { environment } from '../../../environments/environment';
 
 @Component({
@@ -22,11 +22,10 @@ import { environment } from '../../../environments/environment';
 })
 export class ChatComponent {
   readonly supabase = inject(SupabaseService);
-  readonly tokenService = inject(GeminiTokenService);
-  readonly chatService = inject(GeminiChatService);
+  readonly tokenService = inject(GroqTokenService);
+  readonly chatService = inject(GroqChatService);
 
-  readonly modeloActivo = environment.geminiModel;
-  readonly diasVigencia = environment.geminiTokenTtlDias;
+  readonly diasVigencia = environment.groqTokenTtlDias;
 
   // Estado local del formulario de mensaje y gestion de token
   readonly textoPregunta = signal<string>('');
@@ -84,6 +83,10 @@ export class ChatComponent {
     }
   }
 
+  cambiarModelo(modelo: string): void {
+    this.chatService.seleccionarModelo(modelo);
+  }
+
   abrirEditorToken(): void {
     this.tokenInput.set('');
     this.resultadoPrueba.set(null);
@@ -118,7 +121,7 @@ export class ChatComponent {
   guardarToken(): void {
     const ok = this.tokenService.guardarToken(this.tokenInput());
     if (!ok) {
-      this.avisoToken.set('Ingresa una API key valida de Google AI Studio (minimo 10 caracteres).');
+      this.avisoToken.set('Ingresa una API Key valida de Groq (debe iniciar con gsk_ y tener al menos 20 caracteres).');
       return;
     }
 

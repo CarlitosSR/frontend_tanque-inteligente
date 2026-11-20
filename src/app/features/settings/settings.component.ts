@@ -3,8 +3,8 @@ import { CommonModule, DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SupabaseService } from '../../core/services/supabase.service';
 import { Esp32LocalService } from '../../core/services/esp32-local.service';
-import { GeminiTokenService } from '../../core/services/gemini-token.service';
-import { GeminiChatService } from '../../core/services/gemini-chat.service';
+import { GroqTokenService } from '../../core/services/groq-token.service';
+import { GroqChatService } from '../../core/services/groq-chat.service';
 import { ConfiguracionSistema } from '../../core/models/tanque.model';
 import { environment } from '../../../environments/environment';
 
@@ -143,32 +143,47 @@ import { environment } from '../../../environments/environment';
           </div>
         </section>
 
-        <!-- Tarjeta 3: Asistente IA Gemini (token solo en navegador por 3 dias) -->
+        <!-- Tarjeta 3: Asistente IA Groq (token solo en navegador por 3 dias) -->
         <section class="config-panel">
           <div class="panel-head">
             <span class="panel-idx">03</span>
-            <h3 class="panel-name">Asistente IA ({{ modeloGemini }})</h3>
+            <h3 class="panel-name">Asistente IA (Groq API)</h3>
           </div>
 
           <div class="panel-body">
-            <div class="ai-status-box mono-val" [class.active]="geminiToken.tieneTokenActivo()">
-              @if (geminiToken.tieneTokenActivo()) {
-                <span>Activo: {{ geminiToken.tokenEnmascarado() }}</span>
-                <span>Expira: {{ geminiToken.expiraEnDate() | date:'dd/MM/yyyy HH:mm':'-0500' }} ({{ geminiToken.tiempoRestanteTexto() }})</span>
+            <div class="ai-status-box mono-val" [class.active]="groqToken.tieneTokenActivo()">
+              @if (groqToken.tieneTokenActivo()) {
+                <span>Activo: {{ groqToken.tokenEnmascarado() }}</span>
+                <span>Expira: {{ groqToken.expiraEnDate() | date:'dd/MM/yyyy HH:mm':'-0500' }} ({{ groqToken.tiempoRestanteTexto() }})</span>
               } @else {
                 <span>Sin token activo o expirado</span>
               }
             </div>
 
             <div class="input-block">
-              <label for="geminiKey">API Key de Google AI Studio (vigencia {{ diasTokenGemini }} dias):</label>
+              <label for="groqModelSelect">Modelo activo de Groq:</label>
+              <select
+                id="groqModelSelect"
+                class="mono-val"
+                [ngModel]="groqChat.modeloSeleccionado()"
+                (ngModelChange)="groqChat.seleccionarModelo($event)"
+              >
+                @for (modelo of groqChat.modelosDisponibles; track modelo) {
+                  <option [value]="modelo">{{ modelo }}</option>
+                }
+              </select>
+              <span class="input-hint">Con fallback automatico al modelo alternativo si ocurre saturacion (5xx).</span>
+            </div>
+
+            <div class="input-block">
+              <label for="groqKey">API Key de Groq Console (vigencia {{ diasTokenGroq }} dias):</label>
               <input
-                id="geminiKey"
+                id="groqKey"
                 type="password"
                 class="mono-val"
-                [ngModel]="geminiTokenInput()"
-                (ngModelChange)="geminiTokenInput.set($event)"
-                placeholder="AIzaSy..."
+                [ngModel]="groqTokenInput()"
+                (ngModelChange)="groqTokenInput.set($event)"
+                placeholder="gsk_..."
                 autocomplete="off"
               />
               <span class="input-hint">
@@ -181,35 +196,35 @@ import { environment } from '../../../environments/environment';
                 <button
                   type="button"
                   class="btn-test"
-                  (click)="probarGemini()"
-                  [disabled]="probandoGemini() || (!geminiTokenInput().trim() && !geminiToken.tieneTokenActivo())"
+                  (click)="probarGroq()"
+                  [disabled]="probandoGroq() || (!groqTokenInput().trim() && !groqToken.tieneTokenActivo())"
                 >
-                  {{ probandoGemini() ? 'Verificando...' : 'Probar Token Gemini' }}
+                  {{ probandoGroq() ? 'Verificando...' : 'Probar Token Groq' }}
                 </button>
 
                 <button
                   type="button"
                   class="btn-test btn-save-token"
-                  (click)="guardarTokenGemini()"
-                  [disabled]="!geminiTokenInput().trim()"
+                  (click)="guardarTokenGroq()"
+                  [disabled]="!groqTokenInput().trim()"
                 >
-                  Guardar Token ({{ diasTokenGemini }} dias)
+                  Guardar Token ({{ diasTokenGroq }} dias)
                 </button>
 
-                @if (geminiToken.tieneTokenActivo()) {
+                @if (groqToken.tieneTokenActivo()) {
                   <button
                     type="button"
                     class="btn-test btn-revoke"
-                    (click)="eliminarTokenGemini()"
+                    (click)="eliminarTokenGroq()"
                   >
                     Eliminar Token
                   </button>
                 }
               </div>
 
-              @if (resultadoGemini()) {
-                <span class="test-badge" [class.ok]="exitoGemini()">
-                  {{ resultadoGemini() }}
+              @if (resultadoGroq()) {
+                <span class="test-badge" [class.ok]="exitoGroq()">
+                  {{ resultadoGroq() }}
                 </span>
               }
             </div>
@@ -490,11 +505,10 @@ import { environment } from '../../../environments/environment';
 export class SettingsComponent {
   readonly supabase = inject(SupabaseService);
   readonly esp32Local = inject(Esp32LocalService);
-  readonly geminiToken = inject(GeminiTokenService);
-  readonly geminiChat = inject(GeminiChatService);
+  readonly groqToken = inject(GroqTokenService);
+  readonly groqChat = inject(GroqChatService);
 
-  readonly modeloGemini = environment.geminiModel;
-  readonly diasTokenGemini = environment.geminiTokenTtlDias;
+  readonly diasTokenGroq = environment.groqTokenTtlDias;
   readonly formData: ConfiguracionSistema = { ...this.supabase.configuracion() };
 
   readonly mensajeGuardado = signal<string | null>(null);
@@ -507,13 +521,13 @@ export class SettingsComponent {
   readonly resultadoEsp32 = signal<string | null>(null);
   readonly exitoEsp32 = signal<boolean>(false);
 
-  readonly geminiTokenInput = signal<string>('');
-  readonly probandoGemini = signal<boolean>(false);
-  readonly resultadoGemini = signal<string | null>(null);
-  readonly exitoGemini = signal<boolean>(false);
+  readonly groqTokenInput = signal<string>('');
+  readonly probandoGroq = signal<boolean>(false);
+  readonly resultadoGroq = signal<string | null>(null);
+  readonly exitoGroq = signal<boolean>(false);
 
   constructor() {
-    this.geminiToken.verificarVigencia();
+    this.groqToken.verificarVigencia();
   }
 
   async probarSupabase(): Promise<void> {
@@ -572,38 +586,38 @@ export class SettingsComponent {
     this.guardarConfiguracion();
   }
 
-  async probarGemini(): Promise<void> {
-    const tokenAProbar = this.geminiTokenInput().trim() || this.geminiToken.obtenerTokenValido() || '';
+  async probarGroq(): Promise<void> {
+    const tokenAProbar = this.groqTokenInput().trim() || this.groqToken.obtenerTokenValido() || '';
     if (!tokenAProbar) return;
 
-    this.probandoGemini.set(true);
-    this.resultadoGemini.set(null);
+    this.probandoGroq.set(true);
+    this.resultadoGroq.set(null);
     try {
-      const res = await this.geminiChat.probarConexionToken(tokenAProbar);
-      this.exitoGemini.set(res.ok);
-      this.resultadoGemini.set(res.mensaje);
+      const res = await this.groqChat.probarConexionToken(tokenAProbar);
+      this.exitoGroq.set(res.ok);
+      this.resultadoGroq.set(res.mensaje);
     } finally {
-      this.probandoGemini.set(false);
+      this.probandoGroq.set(false);
     }
   }
 
-  guardarTokenGemini(): void {
-    const ok = this.geminiToken.guardarToken(this.geminiTokenInput());
+  guardarTokenGroq(): void {
+    const ok = this.groqToken.guardarToken(this.groqTokenInput());
     if (!ok) {
-      this.exitoGemini.set(false);
-      this.resultadoGemini.set('Ingresa una API key valida (minimo 10 caracteres).');
+      this.exitoGroq.set(false);
+      this.resultadoGroq.set('Ingresa una API Key valida de Groq (prefijo gsk_ y minimo 20 caracteres).');
       return;
     }
 
-    this.geminiTokenInput.set('');
-    this.exitoGemini.set(true);
-    this.resultadoGemini.set(`Token guardado localmente por ${this.diasTokenGemini} dias.`);
+    this.groqTokenInput.set('');
+    this.exitoGroq.set(true);
+    this.resultadoGroq.set(`Token guardado localmente por ${this.diasTokenGroq} dias.`);
   }
 
-  eliminarTokenGemini(): void {
-    this.geminiToken.eliminarToken();
-    this.geminiTokenInput.set('');
-    this.exitoGemini.set(true);
-    this.resultadoGemini.set('Token eliminado del navegador.');
+  eliminarTokenGroq(): void {
+    this.groqToken.eliminarToken();
+    this.groqTokenInput.set('');
+    this.exitoGroq.set(true);
+    this.resultadoGroq.set('Token eliminado del navegador.');
   }
 }

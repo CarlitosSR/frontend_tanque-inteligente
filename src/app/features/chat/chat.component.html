@@ -2,13 +2,25 @@
   <!-- Barra superior de control del asistente -->
   <header class="chat-toolbar">
     <div class="toolbar-left">
-      <span class="toolbar-tag">IA · {{ modeloActivo }}</span>
+      <span class="toolbar-tag">IA · GROQ</span>
       <span class="toolbar-title">Asistente de Telemetria Hidrica</span>
+
+      <select
+        class="model-select mono-val"
+        [ngModel]="chatService.modeloSeleccionado()"
+        (ngModelChange)="cambiarModelo($event)"
+        [disabled]="chatService.enviando()"
+        aria-label="Seleccionar modelo de Groq"
+      >
+        @for (modelo of chatService.modelosDisponibles; track modelo) {
+          <option [value]="modelo">{{ modelo }}</option>
+        }
+      </select>
     </div>
 
     <div class="toolbar-right">
       @if (tokenService.tieneTokenActivo()) {
-        <span class="token-pill active mono-val" title="Token almacenado localmente en este navegador">
+        <span class="token-pill active mono-val" title="Token de Groq almacenado localmente en este navegador">
           Token: {{ tokenService.tokenEnmascarado() }} · {{ tokenService.tiempoRestanteTexto() }}
         </span>
         <button type="button" class="tool-btn" (click)="abrirEditorToken()">
@@ -67,12 +79,12 @@
     <section class="token-gate">
       <div class="gate-head">
         <span class="gate-tag">CREDENCIAL LOCAL · {{ diasVigencia }} DIAS</span>
-        <h2>Configurar API Key de Gemini ({{ modeloActivo }})</h2>
+        <h2>Configurar API Key de Groq ({{ chatService.modeloSeleccionado() }})</h2>
       </div>
 
       <p class="gate-desc">
-        Para mantener el codigo fuente libre de credenciales, el token de Google AI Studio se solicita
-        directamente aqui y se guarda unicamente en el navegador durante <strong>{{ diasVigencia }} dias (72 horas)</strong>.
+        Para mantener el codigo fuente libre de credenciales, tu token de Groq Console (<code>gsk_...</code>) se solicita
+        directamente aqui y se guarda unicamente en este navegador durante <strong>{{ diasVigencia }} dias (72 horas)</strong>.
         Al vencer el plazo se elimina automaticamente.
       </p>
 
@@ -84,15 +96,15 @@
       }
 
       <div class="token-form">
-        <label for="geminiTokenInput">API Key de Google AI Studio:</label>
+        <label for="groqTokenInput">API Key de Groq Console:</label>
         <div class="token-input-row">
           <input
-            id="geminiTokenInput"
+            id="groqTokenInput"
             [type]="mostrarTokenTexto() ? 'text' : 'password'"
             class="mono-val"
             [ngModel]="tokenInput()"
             (ngModelChange)="tokenInput.set($event)"
-            placeholder="AIzaSy..."
+            placeholder="gsk_..."
             autocomplete="off"
           />
           <button
@@ -145,9 +157,9 @@
       </div>
 
       <p class="gate-hint">
-        Puedes obtener tu clave gratuita en
-        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">
-          Google AI Studio (aistudio.google.com/apikey)
+        Puedes generar tu clave en
+        <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">
+          Groq Console (console.groq.com/keys)
         </a>.
       </p>
     </section>
@@ -157,7 +169,7 @@
       <div class="messages-area" #mensajesContainer aria-live="polite">
         @if (chatService.mensajes().length === 0) {
           <div class="empty-chat">
-            <div class="empty-title">Asistente conectado a telemetria en vivo</div>
+            <div class="empty-title">Asistente Groq conectado a telemetria en vivo</div>
             <p class="empty-desc">
               Cada consulta inyecta automaticamente las lecturas actuales de Supabase, las alertas activas,
               el resumen de tendencias del historial y los limites sanitarios MINSA (D.S. 031-2010-SA).
@@ -184,7 +196,7 @@
                   <span class="msg-author mono-val">
                     @switch (msg.rol) {
                       @case ('usuario') { OPERADOR }
-                      @case ('asistente') { GEMINI 3.8 FLASH }
+                      @case ('asistente') { GROQ · {{ msg.modeloUsado || chatService.modeloSeleccionado() }} }
                       @case ('error') { ERROR }
                     }
                   </span>
@@ -206,7 +218,7 @@
             <article class="msg-row role-asistente">
               <div class="msg-bubble typing-bubble">
                 <span class="typing-dot"></span>
-                <span class="mono-val">Analizando telemetria con {{ modeloActivo }}...</span>
+                <span class="mono-val">Analizando telemetria con {{ chatService.modeloSeleccionado() }}...</span>
               </div>
             </article>
           }

@@ -7,7 +7,8 @@ export const environment = {
   tanquePrototipoCapacidadLitros: 7.0,
   tanqueRealCapacidadLitros: 1100.0,
   limiteMinsaTurbidezNtu: 5.0,
-  geminiModel: 'gemini-3.8-flash',
-  geminiApiBaseUrl: 'https://generativelanguage.googleapis.com/v1beta/models',
-  geminiTokenTtlDias: 3
+  groqApiBaseUrl: 'https://api.groq.com/openai/v1',
+  groqDefaultModel: 'openai/gpt-oss-120b',
+  groqAvailableModels: ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b'] as readonly string[],
+  groqTokenTtlDias: 3
 };

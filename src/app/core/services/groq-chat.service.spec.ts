@@ -1,8 +1,8 @@
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
-import { GeminiChatService } from './gemini-chat.service';
-import { GeminiTokenService } from './gemini-token.service';
+import { GroqChatService } from './groq-chat.service';
+import { GroqTokenService } from './groq-token.service';
 import { SupabaseService } from './supabase.service';
 import { Esp32LocalService } from './esp32-local.service';
 import {
@@ -80,7 +80,7 @@ function crearHistorialMock(): HistorialTanque[] {
   ];
 }
 
-describe('GeminiChatService', () => {
+describe('GroqChatService', () => {
   let supabaseMock: {
     estadoActual: ReturnType<typeof signal<EstadoTanque | null>>;
     historial: ReturnType<typeof signal<HistorialTanque[]>>;
@@ -144,8 +144,8 @@ describe('GeminiChatService', () => {
     localStorage.clear();
   });
 
-  it('debe inyectar estado actual, alertas, historial y advertencia MINSA en el system prompt', () => {
-    const chatService = TestBed.inject(GeminiChatService);
+  it('debe inyectar telemetria, alertas, historial y advertencia MINSA en el system prompt', () => {
+    const chatService = TestBed.inject(GroqChatService);
     const prompt = chatService.construirSystemPrompt();
 
     expect(prompt).toContain('65% (4.55 L disponibles)');
@@ -157,18 +157,20 @@ describe('GeminiChatService', () => {
     expect(prompt).toContain('D.S. 031-2010-SA');
   });
 
-  it('debe enviar el request a gemini-3.8-flash con cabecera x-goog-api-key y system_instruction', async () => {
-    const tokenService = TestBed.inject(GeminiTokenService);
-    const chatService = TestBed.inject(GeminiChatService);
-    tokenService.guardarToken('AIzaSyMockKeyGemini38Flash');
+  it('debe enviar el payload OpenAI-compatible a api.groq.com con Bearer token y limpiar bloques think', async () => {
+    const tokenService = TestBed.inject(GroqTokenService);
+    const chatService = TestBed.inject(GroqChatService);
+    tokenService.guardarToken('gsk_mock_groq_key_1234567890abcd');
 
     fetchSpy.mockResolvedValue(
       new Response(
         JSON.stringify({
-          candidates: [
+          model: 'openai/gpt-oss-120b',
+          choices: [
             {
-              content: {
-                parts: [{ text: 'El tanque esta al 65% con alerta de turbidez en 6.4 UNT.' }]
+              message: {
+                role: 'assistant',
+                content: '<think>Razonamiento interno</think>El tanque esta al 65% con turbidez de 6.4 UNT.'
               }
             }
           ]
@@ -181,64 +183,113 @@ describe('GeminiChatService', () => {
 
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, options] = fetchSpy.mock.calls[0];
-    expect(url).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent'
-    );
-    expect((options?.headers as Record<string, string>)['x-goog-api-key']).toBe(
-      'AIzaSyMockKeyGemini38Flash'
+    expect(url).toBe('https://api.groq.com/openai/v1/chat/completions');
+    expect((options?.headers as Record<string, string>)['Authorization']).toBe(
+      'Bearer gsk_mock_groq_key_1234567890abcd'
     );
 
     const body = JSON.parse(String(options?.body));
-    expect(body.system_instruction.parts[0].text).toContain('<telemetria_actual>');
-    expect(body.contents.at(-1).parts[0].text).toBe('Cual es el estado actual?');
+    expect(body.model).toBe('openai/gpt-oss-120b');
+    expect(body.stream).toBe(false);
+    expect(body.temperature).toBe(0.3);
+    expect(body.messages[0].role).toBe('system');
+    expect(body.messages[0].content).toContain('<telemetria_actual>');
+    expect(body.messages.at(-1)).toEqual({
+      role: 'user',
+      content: 'Cual es el estado actual?'
+    });
 
     const msgs = chatService.mensajes();
     expect(msgs).toHaveLength(2);
-    expect(msgs[0].rol).toBe('usuario');
     expect(msgs[1].rol).toBe('asistente');
-    expect(msgs[1].texto).toContain('6.4 UNT');
+    expect(msgs[1].texto).toBe('El tanque esta al 65% con turbidez de 6.4 UNT.');
+    expect(msgs[1].modeloUsado).toBe('openai/gpt-oss-120b');
   });
 
-  it('debe bloquear envio si no existe token valido', async () => {
-    const chatService = TestBed.inject(GeminiChatService);
+  it('debe ejecutar fallback automatico a qwen/qwen3.8-27b si openai/gpt-oss-120b responde HTTP 503', async () => {
+    const tokenService = TestBed.inject(GroqTokenService);
+    const chatService = TestBed.inject(GroqChatService);
+    tokenService.guardarToken('gsk_fallback_test_key_1234567890');
 
-    await chatService.enviarMensaje('Hola');
+    fetchSpy
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: { message: 'Service Unavailable' } }), { status: 503 })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            model: 'qwen/qwen3.8-27b',
+            choices: [
+              {
+                message: {
+                  role: 'assistant',
+                  content: 'Respuesta servida por el modelo alternativo.'
+                }
+              }
+            ]
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        )
+      );
 
+    await chatService.enviarMensaje('Estado rapido');
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    const segundoBody = JSON.parse(String(fetchSpy.mock.calls[1][1]?.body));
+    expect(segundoBody.model).toBe('qwen/qwen3.8-27b');
+
+    const ultimo = chatService.mensajes().at(-1);
+    expect(ultimo?.rol).toBe('asistente');
+    expect(ultimo?.modeloUsado).toBe('qwen/qwen3.8-27b');
+  });
+
+  it('debe bloquear envio sin token y reportar errores HTTP 401 y 429 sin trabar el estado', async () => {
+    const tokenService = TestBed.inject(GroqTokenService);
+    const chatService = TestBed.inject(GroqChatService);
+
+    await chatService.enviarMensaje('Sin token');
     expect(fetchSpy).not.toHaveBeenCalled();
-    expect(chatService.errorChat()).toContain('token de Gemini');
-    expect(chatService.mensajes()).toHaveLength(0);
-  });
+    expect(chatService.errorChat()).toContain('token de Groq');
 
-  it('debe informar error claro ante HTTP 401 y HTTP 429', async () => {
-    const tokenService = TestBed.inject(GeminiTokenService);
-    const chatService = TestBed.inject(GeminiChatService);
-    tokenService.guardarToken('AIzaSyInvalidKeyTest1234');
+    tokenService.guardarToken('gsk_error_handling_key_123456789');
 
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: { message: 'API key not valid' } }), { status: 401 })
+      new Response(JSON.stringify({ error: { message: 'Invalid API Key' } }), { status: 401 })
     );
     await chatService.enviarMensaje('Prueba 401');
     expect(chatService.mensajes().at(-1)?.rol).toBe('error');
-    expect(chatService.mensajes().at(-1)?.texto).toContain('401');
+    expect(chatService.mensajes().at(-1)?.texto).toContain('HTTP 401');
+    expect(chatService.enviando()).toBe(false);
 
     fetchSpy.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: { message: 'Rate limit' } }), { status: 429 })
+      new Response(JSON.stringify({ error: { message: 'Rate limit exceeded' } }), { status: 429 })
     );
     await chatService.enviarMensaje('Prueba 429');
     expect(chatService.mensajes().at(-1)?.rol).toBe('error');
-    expect(chatService.mensajes().at(-1)?.texto).toContain('429');
+    expect(chatService.mensajes().at(-1)?.texto).toContain('HTTP 429');
+    expect(chatService.enviando()).toBe(false);
   });
 
-  it('debe validar conectividad del token con GET al modelo sin consumir cuota', async () => {
-    const chatService = TestBed.inject(GeminiChatService);
-    fetchSpy.mockResolvedValue(new Response(JSON.stringify({ name: 'models/gemini-3.8-flash' }), { status: 200 }));
+  it('debe validar el token contra GET /openai/v1/models sin consumir cuota', async () => {
+    const chatService = TestBed.inject(GroqChatService);
+    fetchSpy.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [{ id: 'openai/gpt-oss-120b' }, { id: 'qwen/qwen3.8-27b' }]
+        }),
+        { status: 200 }
+      )
+    );
 
-    const res = await chatService.probarConexionToken('AIzaSyValidCheckToken123');
+    const res = await chatService.probarConexionToken('gsk_valid_check_key_1234567890ab');
     expect(res.ok).toBe(true);
-    expect(res.mensaje).toContain('gemini-3.8-flash');
+    expect(res.mensaje).toContain('openai/gpt-oss-120b');
     expect(fetchSpy).toHaveBeenCalledWith(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash',
-      expect.objectContaining({ method: 'GET' })
+      'https://api.groq.com/openai/v1/models',
+      expect.objectContaining({
+        method: 'GET',
+        headers: { Authorization: 'Bearer gsk_valid_check_key_1234567890ab' }
+      })
     );
   });
 });

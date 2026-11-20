@@ -44,6 +44,21 @@
   color: var(--text-primary);
 }
 
+.model-select {
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-medium);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  min-height: 30px;
+}
+
+.model-select:focus {
+  outline: none;
+  border-color: var(--status-info);
+}
+
 .token-pill {
   font-size: 0.72rem;
   padding: 3px 8px;
