@@ -144,10 +144,12 @@ describe('GroqChatService', () => {
     localStorage.clear();
   });
 
-  it('debe inyectar telemetria, alertas, historial y advertencia MINSA en el system prompt', () => {
+  it('debe inyectar tono amigable, telemetria, alertas, historial y advertencia MINSA en el system prompt', () => {
     const chatService = TestBed.inject(GroqChatService);
     const prompt = chatService.construirSystemPrompt();
 
+    expect(prompt).toContain('TONO Y COMUNICACION ACCESIBLE:');
+    expect(prompt).toContain('amigable, clara, sencilla y accesible');
     expect(prompt).toContain('65% (4.55 L disponibles)');
     expect(prompt).toContain('6.4 UNT');
     expect(prompt).toContain('Turbidez Excesiva');
