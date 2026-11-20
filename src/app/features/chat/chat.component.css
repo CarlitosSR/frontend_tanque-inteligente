@@ -396,6 +396,10 @@ button:disabled {
   color: var(--text-primary);
 }
 
+.msg-body.scada-md {
+  white-space: normal;
+}
+
 .role-error .msg-body {
   color: var(--status-crit);
 }
