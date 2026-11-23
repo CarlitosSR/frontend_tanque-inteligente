@@ -158,7 +158,9 @@ $$;
 alter table public.historial_tanque enable row level security;
 alter table public.estado_tanque enable row level security;
 
--- Politicas permisivas para lectura e insercion publica
+-- Politicas permisivas para lectura e insercion publica en entorno de prototipo
+-- (Nota: en un despliegue productivo multiusuario conviene restringir las tablas a solo SELECT
+--  publico y autenticar la escritura del RPC sincronizar_tanque mediante secreto de dispositivo.)
 drop policy if exists "Lectura e insercion publica historial" on public.historial_tanque;
 create policy "Lectura e insercion publica historial"
 on public.historial_tanque for all using (true) with check (true);

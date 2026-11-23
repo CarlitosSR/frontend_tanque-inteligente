@@ -1,24 +1,24 @@
 # Tanque Inteligente IoT - Frontend Web (Angular 22)
 
-Estacion web de telemetria, control y monitoreo en tiempo real para el sistema de gestion de almacenamiento de agua potable basado en el microcontrolador **AI-Thinker ESP32-CAM**, conectado a la nube mediante **Supabase** y enfocado en la vigilancia sanitaria bajo normativa peruana (MINSA).
+Estación web de telemetría, control y monitoreo en tiempo real para el sistema de gestión de almacenamiento de agua potable basado en la placa **ESP32 DevKit V1 (NodeMCU-32, 30 pines)**, conectado a la nube mediante **Supabase**, con asistente conversacional integrado sobre **Groq API** y enfocado en la vigilancia sanitaria bajo normativa peruana (**MINSA**).
 
 Proyecto desarrollado para el curso de **Arquitectura del Computador** en la **Universidad Privada del Norte (UPN Trujillo)**.
 
 ---
 
-## 1. Descripcion General
+## 1. Descripción General
 
-Esta aplicacion web actua como la interfaz HMI / SCADA para visualizar el gemelo digital del tanque de agua. Permite supervisar niveles de reserva, litros disponibles, calidad fisica del agua por turbidez, estado de la tapa del contenedor, estimaciones de autonomia y deteccion temprana de fugas o estancamiento.
+Esta aplicación web actúa como la interfaz HMI / SCADA para visualizar el gemelo digital del tanque de agua. Permite supervisar niveles de reserva, litros disponibles, calidad física del agua por turbidez relativa, estado de la tapa del contenedor, estimaciones de autonomía, detección temprana de fugas o estancamiento y consultas en lenguaje natural mediante un asistente de IA.
 
-El diseno esta orientado a la precision tecnica de ingenieria, descartando patrones genericos para ofrecer una presentacion de datos densa, tipografia monoespaciada para mediciones de instrumentacion y compatibilidad nativa con dispositivos moviles y pantallas de escritorio.
+El diseño está orientado a la precisión técnica de ingeniería, con tipografía monoespaciada tabular para mediciones de instrumentación y compatibilidad nativa con dispositivos móviles y pantallas de escritorio.
 
 ---
 
-## 2. Arquitectura de Datos y Flujo de Comunicacion
+## 2. Arquitectura de Datos y Flujo de Comunicación
 
 ```mermaid
 flowchart LR
-    ESP["ESP32-CAM\n(AI-Thinker)"] -->|"HTTPS POST /rpc/sincronizar_tanque\n(Cada 15 s)"| SB_RPC["Supabase RPC\nPostgreSQL"]
+    ESP["ESP32 DevKit V1\n(30 pines)"] -->|"HTTPS POST /rpc/sincronizar_tanque\n(Cada 15 s)"| SB_RPC["Supabase RPC\nPostgreSQL"]
     
     subgraph Supabase["Supabase Cloud"]
         SB_RPC --> ET[("public.estado_tanque\n(Fila unica id=1)")]
@@ -28,200 +28,168 @@ flowchart LR
 
     RT -->|"Push instantaneo"| WEB["Frontend Angular 22\n(SupabaseService Store)"]
     HT -->|"Consultas REST"| WEB
+    WEB <-->|"HTTPS POST /chat/completions\n(BYOK local)"| GROQ["Groq API\n(Asistente IA)"]
     ESP -.->|"HTTP GET /api/estado\nPOST /api/medir-turbidez"| LAN["Acceso LAN Directo\n(Opcional)"]
     LAN -.-> WEB
 ```
 
-1. **Adquisicion en el Microcontrolador:** El ESP32-CAM muestrea el nivel con el sensor ultrasonico JSN-SR04T cada 10 s y la turbidez con el TS-300B en intervalos programados.
-2. **Transmision Nube:** Cada 15 s, el ESP32 envia una carga util JSON estructurada a la funcion RPC atomica `sincronizar_tanque`.
-3. **Persistencia y Distribucion:** La base de datos actualiza el estado unico (`estado_tanque`) y registra la serie temporal (`historial_tanque`).
-4. **Consumo en Frontend:** La aplicacion Angular recibe actualizaciones en vivo via WebSockets (Supabase Realtime) sin recargar la pagina, contando con un respaldo de sondeo periodico configurable (polling).
+1. **Adquisición en el Microcontrolador:** El ESP32 DevKit V1 muestrea el nivel con el sensor ultrasónico JSN-SR04T cada `10 s` (mediana de 5 lecturas), vigila la tapa con el MC-38 cada `1 s` y mide la turbidez relativa con el TS-300B en `GPIO33` (`ADC1_CH5`) sin apagar la radio Wi-Fi.
+2. **Transmisión Nube:** Cada `15 s`, el ESP32 envía una carga útil JSON estructurada a la función RPC atómica `sincronizar_tanque`.
+3. **Persistencia y Distribución:** La base de datos actualiza el estado único (`estado_tanque`) y registra la serie temporal (`historial_tanque`).
+4. **Consumo en Frontend:** La aplicación Angular recibe actualizaciones en vivo vía WebSockets (`Supabase Realtime`) sin recargar la página, contando con sondeo periódico de respaldo cuando el socket no está conectado.
 
 ---
 
 ## 3. Funcionalidades Principales
 
-### Panel de Control (Dashboard)
-- **Representacion grafica del tanque HMI:** Cilindro volumetrico con regla graduada lateral (marcas de calibracion para prototipo de 7 L o tanque real de 1100 L), cabezal con simulacion del haz acustico ultrasonico (JSN-SR04T), menisco fisico de llenado y sonda de turbidez inferior (TS-300B).
-- **Lectura de instrumentacion fisica:**
-  - Nivel hidraulico porcentual y volumen en litros.
-  - Columna de agua neta y distancia medida por el sensor ultrasonico.
-  - Turbidez fisica en Unidades Nefelometricas (UNT / NTU) con clasificacion cromatica.
-  - Estado del sensor magnetico de tapa (MC-38) con contador de segundos de apertura.
-  - Tasa de consumo instantaneo (L/h) y media ponderada diaria.
-  - Proyeccion de dias de autonomia de reserva restantes.
+### Panel de Control (Dashboard `/dashboard`)
+- **Representación gráfica del tanque HMI:** Cilindro volumétrico con regla graduada lateral en litros equivalente a `0%`, `25%`, `50%`, `75%` y `100%` de la capacidad (`7 L` o `1100 L`), cabezal con simulación del haz acústico ultrasónico (`JSN-SR04T`), menisco físico de llenado y sonda de turbidez inferior (`TS-300B`).
+- **Estado de enlace y zona ciega:** Muestra fecha y hora completas de última sincronización en Perú (`-0500`), badge de estado del nodo (`EN LÍNEA` o `SIN SEÑAL`) y advertencia si la distancia ultrasónica cae dentro de la zona ciega (`< 25 cm`).
+- **Lectura de instrumentación física:**
+  - Nivel hidráulico porcentual y volumen en litros.
+  - Columna de agua neta y distancia medida por el sensor ultrasónico (`GPIO27 / GPIO26`).
+  - Turbidez física relativa en UNT con clasificación cromática (`Agua clara`, `Regular`, `Turbia (>5 UNT)`).
+  - Estado del sensor magnético de tapa (`MC-38` en `GPIO25`) con contador de segundos de apertura.
+  - Tasa de consumo instantáneo (`L/h`) y media ponderada diaria.
+  - Proyección de días de autonomía de reserva restantes.
   - Horas continuas de agua almacenada (control de estancamiento).
   - Tiempo de actividad del procesador Xtensa Dual-Core (Uptime).
-- **Vigilancia sanitaria:** Panel tipo anunciador industrial con banderas deterministas segun el D.S. 031-2010-SA (Reglamento de la Calidad del Agua para Consumo Humano - MINSA).
-- **Diagnostico en red local (LAN):** Capacidad de consultar `http://<IP_ESP32>/api/estado` o disparar una medicion forzada de turbidez via `/api/medir-turbidez` directamente desde la interfaz.
+- **Vigilancia sanitaria:** Panel anunciador con cinco banderas deterministas evaluadas localmente en el firmware según el **D.S. 031-2010-SA** (MINSA).
+- **Diagnóstico en red local (LAN):** Consulta directa a `http://<IP_ESP32>/api/estado` o disparo forzado de turbidez vía `POST /api/medir-turbidez`.
 
-### Historial y Auditoria
-- Registro cronologico de telemetria con selector de limite de muestras (10, 25, 50, 100).
-- Resumen estadistico de nivel medio, turbidez media y conteo de alarmas.
-- Formato responsivo dual:
-  - **Escritorio:** Tabla tabular compacta con microbarras de nivel y chips de alerta.
-  - **Movil:** Lista de tarjetas ergonomicas verticales para evitar desbordamiento horizontal.
-- Adaptacion estricta al **huso horario de Peru (UTC-5, America/Lima)** en pantalla.
-- Exportacion instantanea de registros a formatos **CSV** (con columna calculada de hora peruana) y **JSON**.
+### Historial y Auditoría (`/history`)
+- Registro cronológico de telemetría con selector de muestras (`10`, `25`, `50`, `100`).
+- Resumen estadístico de nivel medio, turbidez media y conteo de muestras con alarma.
+- Formato responsivo dual: tabla tabular SCADA en escritorio (`> 768px`) y tarjetas verticales en móvil (`<= 768px`).
+- Huso horario estricto de Perú (`UTC-5`, `America/Lima`) en pantalla.
+- Exportación instantánea a **CSV** (con BOM UTF-8 y columna `fecha_hora_peru`) y **JSON** (con metadatos y arreglo de registros).
 
-### Configuracion de Sistema
-- Modificacion dinamica de credenciales de Supabase (URL y Anon Key).
-- Ajuste de IP local del nodo ESP32 para comunicaciones en la misma subred.
-- Selector de modo geometrico: Prototipo de laboratorio (Botella PET 7 L) o Tanque domestico (Rotoplas 1100 L).
-- Herramientas de prueba de enlace en vivo (Ping LAN y comprobacion Supabase).
+### Asistente Conversacional IA (`/chat`)
+- Integrado directamente en la aplicación web consumiendo **Groq API** (`/openai/v1/chat/completions`) con los modelos `openai/gpt-oss-120b` (por defecto) y `qwen/qwen3.8-27b` (alternativo y fallback automático ante errores `404` / `5xx`).
+- Inyección dinámica de la telemetría viva, alertas activas, resumen del historial reciente y diagnóstico LAN en el mensaje `system`, aclarando explícitamente que el sistema **no certifica potabilidad microbiológica ni química**.
+- Esquema **BYOK** (*Bring Your Own Key*): la API Key (`gsk_...`) se guarda exclusivamente en `localStorage` durante `72 horas` (3 días) sin exponerse en el código fuente.
+- Renderizado de respuestas en Markdown GFM mediante `marked` con sanitización anti-XSS.
 
-### Experiencia Movil (Mobile-First)
-- Barra de navegacion inferior fija (`bottom-nav`) con objetivos tactiles ergonomicos (altura >= 48px).
-- Integracion de margenes de seguridad para telefonos con muesca o barra gestual (`safe-area-inset-bottom`).
-- Cuadricula fluida que se reorganiza de 2 columnas a 1 columna en pantallas pequenas.
+### Configuración de Sistema (`/settings`)
+- Edición y prueba aislada de credenciales de Supabase (URL y Anon Key).
+- Ajuste de IP local LAN del nodo ESP32, intervalo de respaldo (`5–120 s`) y selector de modo geométrico (`Prototipo 7 L` / `Tanque Real 1100 L`).
+- Gestión local del token de Groq y selección del modelo activo.
+
+### Experiencia Móvil (Mobile-First)
+- Barra de navegación inferior fija (`mobile-bottom-nav`) con objetivos táctiles mínimos de `44px` (`--touch-target-min`) y soporte de `safe-area-inset-bottom`.
 
 ---
 
-## 4. Sensores y Pines del Hardware
+## 4. Sensores y Pines del Hardware (ESP32 DevKit V1)
 
-El frontend refleja con fidelidad la instrumentacion fisica cableada en el modulo AI-Thinker ESP32-CAM:
-
-| Sensor / Funcion | Pin ESP32 | Destino de Senal | Rol en la Interfaz |
+| Sensor / Función | Pin ESP32 DevKit V1 | Destino / Acondicionamiento | Rol en el Sistema |
 | :--- | :--- | :--- | :--- |
-| **JSN-SR04T (TRIG)** | GPIO12 | Disparo ultrasonico | Salida de pulso |
-| **JSN-SR04T (ECHO)** | GPIO13 | Divisor 1k/2k (3.3V) | Nivel, litros y distancia neta |
-| **TS-300B (AO)** | GPIO14 | ADC2_CH6 (Aislado de WiFi) | Turbidez en UNT y calidad del agua |
-| **MC-38 (Reed)** | GPIO2 | Pullup interno contra GND | Deteccion de tapa abierta / cerrada |
-| **LED Flash** | GPIO4 | Transistor MOSFET | Indicador fisico de alerta (opcional) |
+| **JSN-SR04T (TRIG)** | `GPIO27` (`D27`) | Salida digital directa | Disparo ultrasónico (pulso `12 µs`) |
+| **JSN-SR04T (ECHO)** | `GPIO26` (`D26`) | Divisor resistivo `1 kΩ / 2 kΩ` (`5 V -> 3.33 V`) | Nivel, litros y distancia neta |
+| **TS-300B (AO)** | `GPIO33` (`D33` / `ADC1_CH5`) | Divisor resistivo `1 kΩ / 2 kΩ` (`<= 3.00 V`), Wi-Fi activo | Turbidez relativa en UNT |
+| **MC-38 (Reed)** | `GPIO25` (`D25`) | `INPUT_PULLUP` interno contra `GND` | Detección de tapa abierta / cerrada |
 
 ---
 
 ## 5. Reglas Sanitarias Evaluadas (Normativa MINSA)
 
-La interfaz procesa cinco condiciones criticas configuradas en el firmware:
-
-| Alerta | Condicion Tecnica | Criterio Operacional y Sanitario |
+| Alerta | Condición Técnica | Criterio Operacional y Sanitario |
 | :--- | :--- | :--- |
-| **Nivel Critico Bajo** | `porcentaje_nivel <= 20.0%` | Prevencion de desabastecimiento |
-| **Tapa Abierta Prolongada** | `tapa_abierta && tiempo > 30 s` | Prevencion de ingreso del vector del Dengue (*Aedes aegypti*) |
-| **Turbidez Excesiva** | `turbidez_ntu > 5.0 UNT` o `delta >= 2.5` | Limite maximo permisible fijado por el D.S. 031-2010-SA |
-| **Sospecha de Fuga** | `tasa_consumo > 0.50 L/h` | Deteccion continua de roturas o goteos |
-| **Agua Estancada** | `horas_almacenada >= 72 h (3 dias)` | Riesgo de proliferacion de biopeliculas bacterianas |
+| **Nivel Crítico Bajo** | `porcentaje_nivel <= 20.0%` | Prevención de desabastecimiento |
+| **Tapa Abierta Prolongada** | `tapa_abierta && tiempo >= 30 s` | Prevención de ingreso del vector del Dengue (*Aedes aegypti*) |
+| **Turbidez Excesiva** | `turbidez_ntu > 5.0 UNT` o `delta >= 2.5` | Límite máximo permisible fijado por el D.S. 031-2010-SA |
+| **Sospecha de Fuga** | `tasa_consumo > 0.50 L/h` (2 descensos seguidos) | Detección continua de roturas o goteos |
+| **Agua Estancada** | `horas_almacenada >= 72 h` (3 días) | Riesgo de proliferación de biopelículas bacterianas |
 
 ---
 
-## 6. Pila Tecnologica
+## 6. Pila Tecnológica
 
-- **Framework:** [Angular 22](https://angular.dev/) (Standalone Components, Signals, Computed States).
-- **Backend as a Service:** [Supabase](https://supabase.com/) (PostgreSQL, PostgREST RPC, Supabase Realtime via WebSockets).
-- **Cliente Nube:** `@supabase/supabase-js` (v2.x).
-- **Estilos:** CSS3 nativo con diseno SCADA industrial, tokens de diseno, tipografia monoespaciada y variables responsivas.
-- **Pruebas Unitarias:** [Vitest](https://vitest.dev/) con `@angular/build:unit-test`.
-- **Compilador y Bundler:** `@angular/build` (esbuild + Vite).
-
----
-
-## 7. Requisitos Previos
-
-- **Node.js:** Version 20.x o superior.
-- **npm:** Version 10.x o superior.
-- Navegador web moderno con soporte para WebSockets y CSS Grid (Chrome, Firefox, Edge, Safari).
+- **Framework:** [Angular 22](https://angular.dev/) (`Standalone Components`, `Signals`, `Computed States`).
+- **Backend as a Service:** [Supabase](https://supabase.com/) (PostgreSQL, PostgREST RPC, Supabase Realtime vía WebSockets).
+- **Cliente Nube:** `@supabase/supabase-js` (`^2.119.0`).
+- **Asistente IA y Markdown:** Groq API (`fetch` nativo) + `marked` (`^18.2.1`).
+- **Estilos:** CSS3 nativo con tokens SCADA, tipografía monoespaciada tabular y variables responsivas.
+- **Pruebas Unitarias:** [Vitest](https://vitest.dev/) con `jsdom` mediante `@angular/build:unit-test`.
+- **Compilador y Bundler:** `@angular/build` (`esbuild` + `Vite`).
 
 ---
 
-## 8. Instalacion y Puesta en Marcha
+## 7. Requisitos Previos e Instalación
 
-1. **Clonar el repositorio:**
-   ```bash
-   git clone https://github.com/tu-usuario/frontend_tanque-inteligente.git
-   cd frontend_tanque-inteligente
-   ```
+- **Node.js:** Versión `20.x` o superior.
+- **npm:** Versión `10.x` o superior (`packageManager: npm@11.13.0`).
 
-2. **Instalar dependencias:**
-   ```bash
-   npm install
-   ```
-
-3. **Iniciar el servidor de desarrollo:**
-   ```bash
-   npm start
-   ```
-   o directamente con Angular CLI:
-   ```bash
-   ng serve
-   ```
-
-4. **Acceder a la aplicacion:**
-   Abre tu navegador en `http://localhost:4200/`.
-
----
-
-## 9. Configuracion de Variables de Entorno
-
-Los parametros predeterminados de conexion a Supabase y capacidades geometricas se encuentran en `src/environments/`:
-
-```typescript
-// src/environments/environment.ts
-export const environment = {
-  production: true,
-  supabaseUrl: 'https://qdiscbtpsbvpbrndjsnb.supabase.co',
-  supabaseAnonKey: 'sb_publishable_ZT_wFhxYrDnJgxucb-WBfQ_FDElItcX',
-  esp32DefaultIp: '',
-  tanquePrototipoCapacidadLitros: 7.0,
-  tanqueRealCapacidadLitros: 1100.0,
-  limiteMinsaTurbidezNtu: 5.0
-};
+```bash
+git clone https://github.com/CarlitosSR/frontend_tanque-inteligente.git
+cd frontend_tanque-inteligente
+npm install
+npm start
 ```
 
-> [!NOTE]
-> Puedes actualizar o sobreescribir estas credenciales directamente desde la interfaz en la pestana **Ajustes**, donde los cambios quedan guardados de forma persistente en el almacenamiento local del navegador (`localStorage`).
+Abrir en el navegador `http://localhost:4200/`.
 
 ---
 
-## 10. Scripts Disponibles
+## 8. Scripts Disponibles (`package.json`)
 
-En el directorio del proyecto puedes ejecutar:
-
-- `npm start`: Inicia el servidor de desarrollo local en el puerto 4200.
-- `npm run build`: Compila la aplicacion para produccion en el directorio `dist/frontend_tanque-inteligente`.
-- `npm test`: Ejecuta las pruebas unitarias automatizadas con Vitest.
-- `npm run watch`: Ejecuta la compilacion en modo observador con recarga incremental de desarrollo.
+- `npm start`: Inicia el servidor de desarrollo local (`ng serve`) en el puerto `4200`.
+- `npm run build`: Compila el bundle de producción en `dist/frontend_tanque-inteligente`.
+- `npm test -- --watch=false`: Ejecuta una corrida única de la suite unitaria en Vitest.
+- `npm run watch`: Compilación incremental de desarrollo en modo observador.
 
 ---
 
-## 11. Estructura del Codigo Fuente
+## 9. Estructura del Código Fuente
 
 ```text
 src/
-├── app/
-│   ├── core/
-│   │   ├── models/
-│   │   │   └── tanque.model.ts          # Interfaces de telemetria, historial y configuracion
-│   │   └── services/
-│   │       ├── supabase.service.ts      # Cliente Supabase, Realtime WebSocket y polling
-│   │       └── esp32-local.service.ts   # Comunicacion HTTP directa con el nodo en LAN
-│   ├── features/
-│   │   ├── dashboard/                   # Vista principal de monitoreo
-│   │   │   ├── components/
-│   │   │   │   ├── tank-gauge/          # Visualizador grafico del cilindro y menisco
-│   │   │   │   ├── metric-card/         # Tarjetas de medicion con identificador de hardware
-│   │   │   │   └── alerts-panel/        # Panel de alarmas sanitarias (D.S. 031-2010-SA)
-│   │   │   ├── dashboard.component.ts
-│   │   ├── history/                     # Vista de series temporales y exportacion CSV/JSON
-│   │   │   ├── history.component.ts
-│   │   └── settings/                    # Panel de configuracion de enlaces e IP LAN
-│   │       ├── settings.component.ts
-│   │   ├── app.routes.ts                # Enrutamiento lazy-loaded
-│   │   ├── app.ts                       # Componente raiz
-│   │   ├── app.html                     # Shell con barra superior y barra inferior movil
-│   │   └── app.css                      # Estilos del contenedor y navegacion responsiva
-│   ├── environments/                    # Configuraciones de entorno (prod y dev)
-│   ├── index.html                       # HTML de entrada
-│   ├── main.ts                          # Bootstrap de la aplicacion Angular
-│   └── styles.css                       # Variables globales, paleta SCADA y tipografia
-└── angular.json                         # Configuracion del CLI y presupuestos de empaquetado
+├── environments/
+│   ├── environment.ts                          # Configuración base de producción (sin secretos IA)
+│   └── environment.development.ts              # Configuración para desarrollo local
+├── index.html                                  # Documento HTML raíz (lang="es")
+├── main.ts                                     # Bootstrap de Angular
+├── styles.css                                  # Tokens SCADA, tipografía tabular y estilos .scada-md
+└── app/
+    ├── core/
+    │   ├── models/
+    │   │   ├── tanque.model.ts                 # Interfaces de telemetría, historial y configuración
+    │   │   └── chatbot.model.ts                # Interfaces de token Groq y contrato Chat Completions
+    │   └── services/
+    │       ├── supabase.service.ts             # Cliente Supabase, Realtime, frescura de nodo y alertas MINSA
+    │       ├── esp32-local.service.ts          # Comunicación HTTP directa con el nodo en LAN
+    │       ├── esp32-local.service.spec.ts     # Pruebas unitarias de Esp32LocalService
+    │       ├── groq-token.service.ts           # Gestión local de API Key Groq (TTL 72 h)
+    │       ├── groq-token.service.spec.ts      # Pruebas unitarias de GroqTokenService
+    │       ├── groq-chat.service.ts            # Prompt injection de telemetría y fallback Groq
+    │       └── groq-chat.service.spec.ts       # Pruebas unitarias de GroqChatService
+    ├── features/
+    │   ├── dashboard/
+    │   │   ├── components/
+    │   │   │   ├── tank-gauge/                 # Visualizador gráfico del cilindro, menisco y pruebas .spec.ts
+    │   │   │   ├── metric-card/                # Tarjetas de medición con etiqueta de hardware
+    │   │   │   └── alerts-panel/               # Panel de alarmas sanitarias (D.S. 031-2010-SA)
+    │   │   └── dashboard.component.ts
+    │   ├── history/
+    │   │   ├── history.component.ts            # Vista de series temporales y exportación CSV / JSON
+    │   │   └── history.component.spec.ts       # Pruebas unitarias de HistoryComponent
+    │   ├── chat/
+    │   │   ├── chat.component.ts / .html / .css
+    │   │   ├── markdown-chat.pipe.ts           # Renderizado GFM seguro con scadaRenderer
+    │   │   └── markdown-chat.pipe.spec.ts      # Pruebas unitarias de MarkdownChatPipe
+    │   └── settings/
+    │       └── settings.component.ts           # Panel de configuración de enlaces, escala e IA
+    ├── app.routes.ts                           # Enrutamiento lazy-loaded
+    ├── app.ts / .html / .css / .spec.ts        # Shell principal y navegación responsiva
+├── vercel.json                                 # Rewrites SPA y cabeceras HTTP de seguridad
+└── angular.json                                # Configuración del CLI y presupuestos de empaquetado
 ```
 
 ---
 
-## 12. Autores y Creditos
+## 10. Autores y Créditos
 
-- **Institucion:** Universidad Privada del Norte (UPN) - Sede Trujillo.
+- **Institución:** Universidad Privada del Norte (UPN) - Sede Trujillo.
 - **Curso:** Arquitectura del Computador.
-- **Desarrollo:** Carlitos Manuel Sanchez Ruiz y equipo del proyecto.
-- **Licencia:** Proyecto academico de codigo abierto.
+- **Autores:** Espinoza Watanabe, Ryoji Steven; Pumayalla Sánchez, Jerry Heinze; Rodríguez Monzón, Gerardo Manuel; Sánchez Ruiz, Carlitos Manuel.
+- **Licencia:** Proyecto académico de código abierto.
