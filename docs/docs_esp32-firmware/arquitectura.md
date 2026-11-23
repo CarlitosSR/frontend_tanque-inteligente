@@ -1,6 +1,6 @@
 # Arquitectura del Sistema, Hardware y Circuitos
 
-Este documento describe la arquitectura fisica, el diseno del circuito electronico y las consideraciones de hardware para el proyecto **Control de Tanque Inteligente con Chatbot de IA** implementado sobre el modulo **AI-Thinker ESP32-CAM**.
+Este documento describe la arquitectura física, el diseño del circuito electrónico y las consideraciones de hardware para el proyecto **Control de Tanque Inteligente con Chatbot de IA** implementado sobre la placa de desarrollo **ESP32 DevKit V1 (NodeMCU-32, 30 pines)**.
 
 ---
 
@@ -14,18 +14,18 @@ flowchart TD
         MC["Sensor Magnetico MC-38\n(Reed Switch Tapa)"]
     end
 
-    subgraph Acondicionamiento["Adaptacion de Niveles (Protoboard)"]
+    subgraph Acondicionamiento["Adaptacion de Niveles (Protoboard SYB-170)"]
         DIV_ECHO["Divisor Resistivo 1k / 2k\n(5V -> 3.33V)"]
         DIV_TURB["Divisor Resistivo 1k / 2k\n(4.5V -> 3.00V)"]
         PULLUP["Resistencia Interna\nINPUT_PULLUP a 3.3V"]
     end
 
-    subgraph MCU["Modulo AI-Thinker ESP32-CAM"]
-        IO12["IO12 (TRIG)"]
-        IO13["IO13 (ECHO)"]
-        IO14["IO14 (ADC2_CH6)"]
-        IO2["IO2 (TAPA)"]
-        CORE["Procesador Xtensa Dual-Core 240MHz\nLogica en Cascada + Reglas Fijas"]
+    subgraph MCU["Modulo ESP32 DevKit V1 (30 pines)"]
+        GPIO27["GPIO27 (TRIG)"]
+        GPIO26["GPIO26 (ECHO)"]
+        GPIO33["GPIO33 (ADC1_CH5)"]
+        GPIO25["GPIO25 (TAPA)"]
+        CORE["Procesador Xtensa Dual-Core 240MHz\nLogica en Cascada + Reglas Fijas + NVS"]
         SERVER["Servidor Web HTTP (Puerto 80)\nEndpoints REST + CORS"]
         WIFI_CLIENT["WiFiClientSecure (setInsecure)\nCliente HTTPS"]
     end
@@ -37,15 +37,15 @@ flowchart TD
         RT["Canal Realtime (Web / Chatbot)"]
     end
 
-    JSN -- "TRIG" --> IO12
-    JSN -- "ECHO 5V" --> DIV_ECHO --> IO13
-    TS -- "AO 0-4.5V" --> DIV_TURB --> IO14
-    MC -- "Cierre a GND" --> PULLUP --> IO2
+    JSN -- "TRIG" --> GPIO27
+    JSN -- "ECHO 5V" --> DIV_ECHO --> GPIO26
+    TS -- "AO 0-4.5V" --> DIV_TURB --> GPIO33
+    MC -- "Cierre a GND" --> PULLUP --> GPIO25
 
-    IO12 --> CORE
-    IO13 --> CORE
-    IO14 --> CORE
-    IO2 --> CORE
+    GPIO27 --> CORE
+    GPIO26 --> CORE
+    GPIO33 --> CORE
+    GPIO25 --> CORE
 
     CORE --> SERVER
     CORE --> WIFI_CLIENT
@@ -57,124 +57,93 @@ flowchart TD
 
 ---
 
-## Modulo Principal: AI-Thinker ESP32-CAM
+## Módulo Principal: ESP32 DevKit V1 (30 pines)
 
-El sistema utiliza la tarjeta de desarrollo AI-Thinker ESP32-CAM montada sobre su base adaptadora CH340 con puerto micro-USB. 
+El sistema utiliza la placa de desarrollo **ESP32 DevKit V1** (NodeMCU-32 de 30 pines) basada en el módulo **ESP32-WROOM-32**, con conversor USB-UART **CP2102** y puerto micro-USB.
 
-### Caracteristicas de Operacion
-- **Microcontrolador:** ESP32-D0WDQ6-V3 (Dual Core Xtensa 32-bit LX6 hasta 240 MHz).
-- **Memoria RAM:** 520 KB SRAM interna + 4 MB PSRAM externa.
-- **Memoria Flash:** 4 MB SPI Flash.
+### Características de Operación
+- **Microcontrolador:** ESP32-D0WDQ6 (Dual Core Tensilica Xtensa 32-bit LX6 hasta 240 MHz).
+- **Memoria RAM:** 520 KB SRAM interna.
+- **Memoria Flash:** 4 MB SPI Flash (con partición NVS usada para calibraciones persistentes).
 - **Conectividad:** Wi-Fi 802.11 b/g/n (hasta 150 Mbps) y Bluetooth v4.2 BR/EDR y BLE.
 
-### Limitaciones de Pines GPIO y Asignacion
-Dado que la placa integra la camara OV2640 y la ranura micro-SD, la cantidad de pines expuestos en los cabezales es reducida. La seleccion de pines requirio resolver compromisos de hardware:
+### Gestión de Pines GPIO, Strapping Pins y ADC1
+En el diseño sobre la placa de 30 pines se evitaron los pines de arranque (*strapping pins*: `GPIO0`, `GPIO2`, `GPIO5`, `GPIO12`, `GPIO15`) y los canales del `ADC2` (que comparten hardware con la radio Wi-Fi). Todas las señales quedan agrupadas en el header lateral izquierdo:
 
-1. **IO12 (Salida TRIG del sensor ultrasonico):**
-   - Es un pin de arranque (*strapping pin*, MTDI). Si se encuentra en nivel HIGH durante el encendido o reset, fuerza el voltaje de la memoria flash a 1.8 V en lugar de 3.3 V, impidiendo el arranque del sistema (*boot loop*).
-   - *Solucion de diseno:* El pin TRIG del modulo JSN-SR04T posee alta impedancia de entrada y el firmware fuerza `digitalWrite(PIN_JSN_TRIG, LOW)` inmediatamente en `setup()`.
-
-2. **IO13 (Entrada ECHO del sensor ultrasonico):**
-   - Es un pin digital estandar (GPIO13). No presenta restricciones de strapping. Recibe el pulso del eco tras pasar por el divisor de voltaje.
-
-3. **IO14 (Entrada analogica de Turbidez):**
-   - Corresponde al canal ADC2_CH6. En la arquitectura ESP32, el convertidor ADC2 es compartido con el hardware del transceptor WiFi. Mientras la radio WiFi transmite o recibe paquetes, las lecturas en ADC2 arrojan valores corruptos o fallan.
-   - *Solucion de diseno:* El firmware aplica aislamiento por software: apaga brevemente la radio WiFi (`WiFi.mode(WIFI_OFF)`), promedia 20 muestras analogicas en reposo de radiofrecuencia y restaura inmediatamente el modo WiFi anterior.
-
-4. **IO2 (Entrada del sensor magnetico de tapa):**
-   - Es un *strapping pin* que debe permanecer en nivel bajo o flotante durante el arranque para no bloquear el modo de programacion.
-   - *Solucion de diseno:* Se configura con `pinMode(PIN_MC38_TAPA, INPUT_PULLUP)`. Cuando la tapa esta cerrada, el reed switch conmuta a GND (nivel LOW). Si la tapa esta abierta, el pullup interno lo eleva a 3.3 V (HIGH).
-
-5. **IO4 (LED Flash de alta potencia):**
-   - Pin conectado al transistor MOSFET que controla el LED flash blanco integrado. Se mantiene en LOW por software para evitar consumo innecesario y calentamiento de la placa.
+1. **GPIO27 (`D27` — Salida `TRIG` del JSN-SR04T):**
+   - Pin digital estándar sin restricciones de arranque. Envía el pulso de disparo de `12 µs`.
+2. **GPIO26 (`D26` — Entrada `ECHO` del JSN-SR04T):**
+   - Pin digital estándar sin restricciones de arranque. Recibe el pulso del eco atenuado a `3.33 V` mediante el divisor `1 kΩ / 2 kΩ`.
+3. **GPIO33 (`D33` — Entrada analógica `ADC1_CH5` del TS-300B):**
+   - Al pertenecer al bloque **ADC1**, no entra en conflicto con el transceptor Wi-Fi. Permite adquirir las 20 muestras analógicas calibradas por eFuse (`analogReadMilliVolts()`) **sin apagar ni reconectar la radio Wi-Fi**.
+4. **GPIO25 (`D25` — Entrada del sensor magnético MC-38):**
+   - Configurado con `pinMode(PIN_MC38_TAPA, INPUT_PULLUP)`. Cuando la tapa está cerrada, el reed switch conmuta a `GND` (`LOW`); si se abre, el pull-up interno lo eleva a `3.3 V` (`HIGH`).
+5. **`VIN` y `GND`:**
+   - El puerto micro-USB alimenta el riel `VIN` (`~5 V`) hacia la protoboard para alimentar los sensores `JSN-SR04T` y `TS-300B`, compartiendo referencia `GND` común.
 
 ---
 
-## Adaptacion de Niveles y Divisores de Voltaje
+## Adaptación de Niveles y Divisores de Voltaje
 
-Tanto el sensor JSN-SR04T como el TS-300B se alimentan desde el riel de 5 V provisto por el regulador de la base adaptadora para operar dentro de sus curvas optimas. Sin embargo, las entradas del ESP32 toleran como maximo **3.3 V**. Superar este umbral provocaria la destruccion del circuito de proteccion interno del GPIO.
-
-### Esquema del Divisor de Voltaje
+Los pines del ESP32 operan a `3.3 V` con un máximo absoluto de `3.6 V`. Dado que el JSN-SR04T entrega `ECHO` a `5.0 V` y la salida analógica `AO` del TS-300B entrega hasta `4.5 V`, ambos pasan por divisores pasivos `R1 = 1 kΩ` / `R2 = 2 kΩ` (`1/4 W`):
 
 ```text
        Vin (Sensor 5V / 4.5V)
                │
                ┌┴┐
-               │ │  R1 = 1 kOhm (1%)
+               │ │  R1 = 1 kOhm
                └┬┘
-                ├───────────> Vout (Al Pin del ESP32 <= 3.3V)
+                ├───────────> Vout (Al Pin del ESP32 <= 3.33V)
                ┌┴┐
-               │ │  R2 = 2 kOhm (1%)
+               │ │  R2 = 2 kOhm
                └┬┘
                 │
                GND (Comun)
 ```
 
-### Formula y Calculo Teorico
-
 $$V_{out} = V_{in} \cdot \frac{R_2}{R_1 + R_2} = V_{in} \cdot \frac{2000}{1000 + 2000} = V_{in} \cdot \frac{2}{3}$$
 
-El factor de escala inverso aplicado en el firmware para reconstruir la senal real del sensor es:
+El factor de escala inverso aplicado en el firmware es $\text{FACTOR\_DIVISOR\_1K\_2K} = 1.50$.
 
-$$\text{FACTOR\_DIVISOR} = \frac{R_1 + R_2}{R_2} = \frac{3}{2} = 1.50$$
-
-### Aplicacion por Sensor
-
-1. **JSN-SR04T (Pin ECHO):**
-   - Nivel logico alto del sensor: $V_{in} = 5.00\text{ V}$.
-   - Nivel entregado al pin IO13: $V_{out} = 5.00 \cdot \frac{2}{3} = 3.33\text{ V}$ (seguro para logica CMOS 3.3V).
-
-2. **TS-300B (Pin AO - Senal Analogica):**
-   - Rango de salida del modulo: $V_{in} \in [0.00\text{ V}, 4.50\text{ V}]$.
-   - Rango entregado al pin IO14 (ADC): $V_{out} \in [0.00\text{ V}, 3.00\text{ V}]$.
-   - Dado que el convertidor analogico-digital del ESP32 tiene un fondo de escala de $3.30\text{ V}$ con atenuacion de 11 dB, la senal completa de turbidez entra comodamente dentro del rango dinamico lineal del ADC sin saturacion.
+- **JSN-SR04T (`ECHO` → `GPIO26`):** $5.00 \cdot \frac{2}{3} = 3.33\text{ V}$.
+- **TS-300B (`AO` → `GPIO33` / `ADC1_CH5`):** $4.50 \cdot \frac{2}{3} = 3.00\text{ V}$ (dentro del rango lineal de `0–3.30 V` con `ADC_11db`).
 
 ---
 
 ## Sensores del Sistema
 
-### 1. Sensor Ultrasonico Impermeable JSN-SR04T
-- **Transductor:** Transductor piezoelectrico sellado tipo campana (40 kHz) montado en la tapa del tanque.
-- **Rango de medicion:** 25 cm hasta 450 cm.
-- **Zona ciega:** 25 cm desde la superficie del transductor. En tanques o botellas pequenas, se debe asegurar que la distancia minima entre el sensor y el nivel maximo de agua no sea inferior a 25 cm (mediante un soporte elevador o cuello extensor).
-- **Consumo de corriente:** 30 mA en operacion.
+### 1. Sensor Ultrasónico Impermeable JSN-SR04T
+- **Transductor:** piezoeléctrico sellado (40 kHz, IP67) montado sobre el tanque.
+- **Rango útil:** `25 cm` hasta `450 cm` (zona ciega física de `25 cm`).
+- **Calibración en prototipo (botella PET de 7 L, diámetro `16.80 cm`, altura útil `31.60 cm`):** la altura sensor-fondo (valor inicial `50.00 cm`) se ajusta por Monitor Serial con el comando `H<cm>` y se guarda en NVS (`Preferences`).
 
-### 2. Sensor Optico de Turbidez TS-300B / TSW-30
-- **Principio fisico:** Fotointerrupcion infrarroja. Un diodo emisor infrarrojo emite luz a traves de la muestra de agua hacia un fototransistor receptor. A mayor concentracion de particulas en suspension (turbidez), mayor dispersion y menor intensidad de luz alcanza al fototransistor, reduciendo el voltaje analogico entregado.
-- **Voltaje de salida:**
-  - Agua limpia / potable: $4.1\text{ V} - 4.5\text{ V}$ ($< 2.0\text{ UNT}$).
-  - Agua medianamente turbia: $3.0\text{ V} - 4.0\text{ V}$ ($5\text{ UNT} - 50\text{ UNT}$).
-  - Agua altamente turbia / residual: $\le 2.5\text{ V}$ ($> 3000\text{ UNT}$).
+### 2. Sensor Óptico de Turbidez TS-300B / TSW-30
+- **Principio:** transmitancia infrarroja entre emisor IR y fototransistor. No sustituye un turbidímetro certificado; proporciona turbidez relativa de alerta temprana frente al límite de `5.0 UNT` del **D.S. 031-2010-SA**.
+- **Calibración:** admite comando Serial `T` en agua potable limpia para compensar la caída de tensión del diodo de `VIN` y guardar la referencia en NVS.
 
-### 3. Sensor Magnetico de Tapa MC-38
-- **Tipo de contacto:** Reed switch normalmente abierto (NO) accionado por campo magnetico permanente.
-- **Montaje:** La parte con cables se fija al borde superior de la boca del tanque (cableada a IO2 y GND); la pieza con el iman permanente se adhiere a la tapa movil.
-- **Comportamiento:**
-  - Tapa cerrada: Iman alineado, contacto cerrado hacia GND -> Lectura en IO2 = `LOW`.
-  - Tapa retirada o abierta: Contacto abierto, la resistencia `INPUT_PULLUP` eleva el pin a 3.3 V -> Lectura en IO2 = `HIGH`.
+### 3. Sensor Magnético de Tapa MC-38
+- **Comportamiento:** contacto normalmente abierto (NO) accionado por imán (`15–25 mm`). Tapa cerrada → `LOW`; tapa abierta → `HIGH` con temporizador sanitario de `30 s`.
 
 ---
 
-## Logica en Cascada del Sistema
-
-El firmware implementa un bucle de control no bloqueante basado en eventos temporales y de nivel:
+## Lógica en Cascada del Sistema
 
 ```mermaid
 flowchart TD
-    Inicio(["Inicio de Ciclo (millis)"]) --> Nivel["Muestreo de Nivel (Cada 10 s)\nFiltrado por Mediana de 5 Lecturas"]
+    Inicio(["Inicio de Ciclo (millis)"]) --> Nivel["Muestreo de Nivel (Cada 10 s)\nMediana de 5 Lecturas (descarta < 25 cm)"]
     Nivel --> Calc["Calcular Altura, Litros y Porcentaje"]
     Calc --> Delta{"Comparar con Litros Anteriores\nDelta = Litros - Anteriores"}
 
-    Delta -- "Delta >= +0.25 L\n(Subio Nivel)" --> Entrada["Entro Agua Nueva\n- Reset alerta de fuga\n- Medir turbidez con WiFi OFF\n- Guardar Turbidez como Referencia de Entrada"]
-    Delta -- "Delta < -0.02 L\n(Bajo Nivel)" --> Consumo["Consumo Activo\n- Calcular tasa L/h\n- Actualizar media movil diaria\n- Si tasa > 0.50 L/h -> Alerta Fuga"]
-    Delta -- "Estable" --> TasaCero["Tasa actual = 0.0 L/h"]
+    Delta -- "Delta >= +0.25 L\n(Subio Nivel)" --> Entrada["Entro Agua Nueva\n- Reset alerta de fuga\n- Medir turbidez en ADC1 (WiFi ON)\n- Guardar Referencia de Entrada"]
+    Delta -- "Delta < -umbralRuido\n(Bajo Nivel)" --> Consumo["Consumo Activo\n- Calcular tasa L/h\n- Actualizar media movil diaria\n- 2 descensos > 0.50 L/h -> Alerta Fuga"]
+    Delta -- "Estable" --> TasaCero["Tasa = 0.0 L/h\nReset Alerta Fuga"]
 
     Entrada --> Reglas["Evaluar Reglas Fijas Sanitarias"]
     Consumo --> Reglas
     TasaCero --> Reglas
 
-    Reglas --> Alertas["Verificar:\n1. Nivel Bajo <= 20%\n2. Tapa Abierta > 30 s\n3. Turbidez > 5 UNT o Delta > 2.5 UNT\n4. Agua Estancada > 3 dias"]
-    Alertas --> JSON["Construir Payload JSON de 18 Variables"]
+    Reglas --> Alertas["Verificar:\n1. Nivel Bajo <= 20%\n2. Tapa Abierta >= 30 s\n3. Turbidez > 5 UNT o Delta >= 2.5 UNT\n4. Agua Estancada >= 72 h"]
+    Alertas --> JSON["Construir Payload JSON"]
     JSON --> Web["Servidor Web Local /api/estado"]
     JSON --> Nube["HTTPS POST Supabase (Cada 15 s)"]
 ```

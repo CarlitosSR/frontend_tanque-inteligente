@@ -10,14 +10,14 @@ Supabase actua como la capa de persistencia y distribucion en tiempo real del si
 
 ```mermaid
 flowchart LR
-    ESP["ESP32-CAM (Firmware)"] -->|"HTTPS POST /rpc/sincronizar_tanque"| RPC["Funcion RPC: sincronizar_tanque(payload)"]
+    ESP["ESP32 DevKit V1 (Firmware)"] -->|"HTTPS POST /rpc/sincronizar_tanque"| RPC["Funcion RPC: sincronizar_tanque(payload)"]
     subgraph PostgreSQL["Base de Datos PostgreSQL (Supabase)"]
         RPC -->|"1. INSERT (Telemetria continua)"| HT[("Tabla: historial_tanque\nSeries temporales para graficos")]
         RPC -->|"2. UPDATE where id = 1\n(Estado instantaneo)"| ET[("Tabla: estado_tanque\nFila unica (id = 1)")]
     end
     ET -->|"Publicacion supabase_realtime"| RT["Motor Realtime (WebSockets)"]
-    RT -->|"Push instantaneo"| WEB["App Web (Next.js / React)"]
-    ET -->|"Consulta de contexto actual"| CHAT["Chatbot de IA (LLM)"]
+    RT -->|"Push instantaneo"| WEB["App Web (Angular 22)"]
+    ET -->|"Consulta de contexto actual"| CHAT["Asistente IA (Groq API)"]
 ```
 
 ---
@@ -224,7 +224,7 @@ grant execute on function public.sincronizar_tanque(jsonb) to anon, authenticate
 
 ## Publicacion Realtime para la Aplicacion Web
 
-Para que la aplicacion web (ej. Next.js / React) o el asistente conversacional reciban inmediatamente los cambios sin necesidad de hacer sondeo periodico (*polling*), se incorpora la tabla `estado_tanque` a la publicacion de Supabase Realtime:
+Para que la aplicación web (Angular 22) o el asistente conversacional reciban inmediatamente los cambios sin necesidad de hacer sondeo periódico (*polling*), se incorpora la tabla `estado_tanque` a la publicación de Supabase Realtime:
 
 ```sql
 alter publication supabase_realtime add table public.estado_tanque;
