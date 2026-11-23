@@ -66,6 +66,19 @@ import { HistorialTanque } from '../../core/models/tanque.model';
             </svg>
             <span>CSV</span>
           </button>
+
+          <!-- Exportacion JSON -->
+          <button
+            type="button"
+            class="action-btn btn-export"
+            (click)="exportarJSON()"
+            [disabled]="historial().length === 0"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+            </svg>
+            <span>JSON</span>
+          </button>
         </div>
       </section>
 
@@ -682,12 +695,47 @@ export class HistoryComponent {
       ].join(',');
     });
 
+    const fechaPeruArchivo = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
     const csvContent = [headers.join(','), ...filas].join('\r\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `telemetria_tanque_${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `telemetria_tanque_${fechaPeruArchivo}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  exportarJSON(): void {
+    const data = this.historial();
+    if (data.length === 0) return;
+
+    const fechaPeruArchivo = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    const registros = data.map(row => ({
+      ...row,
+      fecha_hora_peru: new Date(row.created_at).toLocaleString('es-PE', {
+        timeZone: 'America/Lima',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
+    }));
+
+    const payload = {
+      exportado_en: new Date().toISOString(),
+      zona_horaria: 'America/Lima',
+      total_muestras: registros.length,
+      registros
+    };
+
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `telemetria_tanque_${fechaPeruArchivo}.json`;
     link.click();
     URL.revokeObjectURL(url);
   }

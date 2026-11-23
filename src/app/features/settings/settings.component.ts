@@ -35,11 +35,12 @@ import { environment } from '../../../environments/environment';
             <h3 class="panel-name">Enlace Supabase Cloud</h3>
           </div>
 
-          <div class="panel-body">
+          <form class="panel-body" (ngSubmit)="$event.preventDefault()" novalidate>
             <div class="input-block">
               <label for="url">Endpoint REST / RPC:</label>
               <input
                 id="url"
+                name="supabaseUrl"
                 type="text"
                 class="mono-val"
                 [(ngModel)]="formData.supabaseUrl"
@@ -53,6 +54,7 @@ import { environment } from '../../../environments/environment';
               <label for="key">Anon / Publishable API Key:</label>
               <input
                 id="key"
+                name="supabaseAnonKey"
                 type="password"
                 class="mono-val"
                 [(ngModel)]="formData.supabaseAnonKey"
@@ -78,14 +80,14 @@ import { environment } from '../../../environments/environment';
                 </span>
               }
             </div>
-          </div>
+          </form>
         </section>
 
         <!-- Tarjeta 2: Red Local ESP32 y Escala Volumetrica -->
         <section class="config-panel">
           <div class="panel-head">
             <span class="panel-idx">02</span>
-            <h3 class="panel-name">Nodo ESP32-CAM y Dimensiones</h3>
+            <h3 class="panel-name">Nodo ESP32 DevKit V1 y Dimensiones</h3>
           </div>
 
           <div class="panel-body">
@@ -150,7 +152,7 @@ import { environment } from '../../../environments/environment';
             <h3 class="panel-name">Asistente IA (Groq API)</h3>
           </div>
 
-          <div class="panel-body">
+          <form class="panel-body" (ngSubmit)="$event.preventDefault()" novalidate>
             <div class="ai-status-box mono-val" [class.active]="groqToken.tieneTokenActivo()">
               @if (groqToken.tieneTokenActivo()) {
                 <span>Activo: {{ groqToken.tokenEnmascarado() }}</span>
@@ -164,6 +166,7 @@ import { environment } from '../../../environments/environment';
               <label for="groqModelSelect">Modelo activo de Groq:</label>
               <select
                 id="groqModelSelect"
+                name="groqModelSelect"
                 class="mono-val"
                 [ngModel]="groqChat.modeloSeleccionado()"
                 (ngModelChange)="groqChat.seleccionarModelo($event)"
@@ -179,6 +182,7 @@ import { environment } from '../../../environments/environment';
               <label for="groqKey">API Key de Groq Console (vigencia {{ diasTokenGroq }} dias):</label>
               <input
                 id="groqKey"
+                name="groqKey"
                 type="password"
                 class="mono-val"
                 [ngModel]="groqTokenInput()"
@@ -228,7 +232,7 @@ import { environment } from '../../../environments/environment';
                 </span>
               }
             </div>
-          </div>
+          </form>
         </section>
       </div>
 
@@ -534,14 +538,12 @@ export class SettingsComponent {
     this.probandoSupabase.set(true);
     this.resultadoSupabase.set(null);
     try {
-      await this.supabase.cargarEstadoActual();
-      if (this.supabase.estadoActual()) {
-        this.exitoSupabase.set(true);
-        this.resultadoSupabase.set('OK: Fila id=1 leida exitosamente');
-      } else {
-        this.exitoSupabase.set(false);
-        this.resultadoSupabase.set(this.supabase.errorConexion() || 'Sin datos de estado');
-      }
+      const res = await this.supabase.probarCredenciales(
+        this.formData.supabaseUrl,
+        this.formData.supabaseAnonKey
+      );
+      this.exitoSupabase.set(res.ok);
+      this.resultadoSupabase.set(res.mensaje);
     } catch {
       this.exitoSupabase.set(false);
       this.resultadoSupabase.set('Fallo de conexion con Supabase');
@@ -572,7 +574,11 @@ export class SettingsComponent {
   }
 
   guardarConfiguracion(): void {
-    this.supabase.actualizarConfiguracion(this.formData);
+    this.formData.intervaloRefrescoSeg = Math.min(
+      120,
+      Math.max(5, Number(this.formData.intervaloRefrescoSeg) || 15)
+    );
+    this.supabase.actualizarConfiguracion({ ...this.formData });
     this.mensajeGuardado.set('Ajustes guardados y aplicados correctamente.');
     setTimeout(() => this.mensajeGuardado.set(null), 4000);
   }
