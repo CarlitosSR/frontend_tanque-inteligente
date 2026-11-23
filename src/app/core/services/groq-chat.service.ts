@@ -76,7 +76,9 @@ export class GroqChatService {
           `- Autonomia estimada: ${estado.dias_autonomia} dias`,
           `- Consumo promedio diario: ${estado.consumo_promedio_diario_l} L/dia | Tasa de consumo actual: ${estado.tasa_consumo_l_h} L/h`,
           `- Tiempo de agua almacenada: ${estado.horas_almacenada} horas`,
-          `- Uptime del microcontrolador ESP32-CAM: ${estado.uptime_seg} segundos`,
+          `- Uptime del microcontrolador ESP32 DevKit V1: ${estado.uptime_seg} segundos`,
+          `- Estado de enlace del nodo: ${this.supabase.nodoEnLinea() ? 'En linea' : 'Sin reporte reciente (' + this.supabase.tiempoSinSyncTexto() + ')'}`,
+          `- Alerta zona ciega (<25 cm): ${estado.distancia_cm > 0 && estado.distancia_cm < 25 ? 'SI' : 'NO'}`,
           `- Recomendacion sugerida por firmware: ${estado.recomendacion_sugerida || 'Sin recomendacion registrada'}`,
           `- Alertas activas (${alertas.length}): ${
             alertas.length > 0
@@ -92,7 +94,7 @@ export class GroqChatService {
       ? [
           `- Dispositivo LAN: ${lan.dispositivo}`,
           `- En zona ciega ultrasonica (<25 cm): ${lan.mediciones.en_zona_ciega_jsn ? 'SI' : 'NO'}`,
-          `- Voltaje pin IO14: ${lan.mediciones.voltaje_pin_io14_v} V | Voltaje sensor TS-300B: ${lan.mediciones.voltaje_sensor_ts300b_v} V`
+          `- Voltaje pin GPIO33 (ADC1): ${lan.mediciones.voltaje_pin_io14_v} V | Voltaje sensor TS-300B: ${lan.mediciones.voltaje_sensor_ts300b_v} V`
         ].join('\n')
       : 'Sin lectura directa por red local LAN en esta sesion.';
 
@@ -256,7 +258,7 @@ export class GroqChatService {
     } catch (err: unknown) {
       return {
         ok: false,
-        mensaje: this.interpretarErrorRed(err)
+        mensaje: this.interpretarErrorRed(err, 8)
       };
     }
   }
@@ -433,9 +435,9 @@ export class GroqChatService {
       : `Error inesperado al consultar Groq API (HTTP ${status}).`;
   }
 
-  private interpretarErrorRed(err: unknown): string {
+  private interpretarErrorRed(err: unknown, timeoutSeg = 20): string {
     if (err instanceof DOMException && err.name === 'TimeoutError') {
-      return 'Tiempo de espera agotado (20s) al contactar con Groq API. Revisa tu conexion a internet o cambia de modelo.';
+      return `Tiempo de espera agotado (${timeoutSeg}s) al contactar con Groq API. Revisa tu conexion a internet o cambia de modelo.`;
     }
     const msg = err instanceof Error ? err.message : String(err);
     return `No se pudo establecer conexion con Groq API (${msg}).`;

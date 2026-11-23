@@ -6,6 +6,8 @@
       <span class="toolbar-title">Asistente de Telemetria Hidrica</span>
 
       <select
+        id="groqModelSelector"
+        name="groqModelSelector"
         class="model-select mono-val"
         [ngModel]="chatService.modeloSeleccionado()"
         (ngModelChange)="cambiarModelo($event)"
@@ -95,11 +97,12 @@
         </div>
       }
 
-      <div class="token-form">
+      <form class="token-form" (ngSubmit)="guardarToken()" novalidate>
         <label for="groqTokenInput">API Key de Groq Console:</label>
         <div class="token-input-row">
           <input
             id="groqTokenInput"
+            name="groqTokenInput"
             [type]="mostrarTokenTexto() ? 'text' : 'password'"
             class="mono-val"
             [ngModel]="tokenInput()"
@@ -137,9 +140,8 @@
           </button>
 
           <button
-            type="button"
+            type="submit"
             class="btn-primary"
-            (click)="guardarToken()"
             [disabled]="!tokenInput().trim()"
           >
             Guardar por {{ diasVigencia }} dias
@@ -154,7 +156,7 @@
             </button>
           }
         </div>
-      </div>
+      </form>
 
       <p class="gate-hint">
         Puedes generar tu clave en
@@ -211,7 +213,7 @@
 
                 @if (msg.rol === 'asistente' && msg.contextoTimestamp) {
                   <div class="msg-context-foot mono-val">
-                    Contexto tanque sync: {{ msg.contextoTimestamp | date:'HH:mm:ss':'-0500' }} (Peru)
+                    Contexto tanque sync: {{ msg.contextoTimestamp | date:'dd/MM HH:mm:ss':'-0500' }} (Peru)
                   </div>
                 }
               </div>

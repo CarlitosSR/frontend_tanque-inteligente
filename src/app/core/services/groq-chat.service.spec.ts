@@ -88,6 +88,8 @@ describe('GroqChatService', () => {
     calidadAgua: ReturnType<typeof signal<{ estado: string; etiqueta: string; color: string }>>;
     capacidadNominalLitros: ReturnType<typeof signal<number>>;
     configuracion: ReturnType<typeof signal<ConfiguracionSistema>>;
+    nodoEnLinea: ReturnType<typeof signal<boolean>>;
+    tiempoSinSyncTexto: ReturnType<typeof signal<string>>;
     cargarHistorial: ReturnType<typeof vi.fn>;
   };
 
@@ -122,6 +124,8 @@ describe('GroqChatService', () => {
         intervaloRefrescoSeg: 15,
         modoTanque: 'prototipo_7l'
       }),
+      nodoEnLinea: signal(true),
+      tiempoSinSyncTexto: signal('hace 5s'),
       cargarHistorial: vi.fn().mockResolvedValue(undefined)
     };
 
@@ -155,6 +159,8 @@ describe('GroqChatService', () => {
     expect(prompt).toContain('Turbidez Excesiva');
     expect(prompt).toContain('Muestras analizadas: 2');
     expect(prompt).toContain('Bajando (-10.0%)');
+    expect(prompt).toContain('ESP32 DevKit V1');
+    expect(prompt).toContain('En linea');
     expect(prompt).toContain('NO certifica potabilidad');
     expect(prompt).toContain('D.S. 031-2010-SA');
   });
