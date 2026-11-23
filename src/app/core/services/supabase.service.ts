@@ -27,22 +27,49 @@ export class SupabaseService {
   private supabaseClient: SupabaseClient | null = null;
   private realtimeChannel: RealtimeChannel | null = null;
   private pollingTimer: number | null = null;
+  private relojTimer: number | null = null;
+  private readonly ahoraMs = signal<number>(Date.now());
+
+  // Evaluacion reactiva de estado en linea del nodo segun frescura de updated_at
+  readonly nodoEnLinea = computed<boolean>(() => {
+    const estado = this.estadoActual();
+    if (!estado?.updated_at) return false;
+    const syncMs = Date.parse(estado.updated_at);
+    if (Number.isNaN(syncMs)) return false;
+    const umbralSeg = Math.max(90, (this.configuracion().intervaloRefrescoSeg || 15) * 4);
+    return (this.ahoraMs() - syncMs) < umbralSeg * 1000;
+  });
+
+  readonly tiempoSinSyncTexto = computed<string>(() => {
+    const estado = this.estadoActual();
+    if (!estado?.updated_at) return 'sin enlace';
+    const syncMs = Date.parse(estado.updated_at);
+    if (Number.isNaN(syncMs)) return 'sin enlace';
+    const diffSeg = Math.max(0, Math.floor((this.ahoraMs() - syncMs) / 1000));
+    if (diffSeg < 60) return `hace ${diffSeg}s`;
+    const diffMin = Math.floor(diffSeg / 60);
+    if (diffMin < 60) return `hace ${diffMin}m`;
+    const diffHoras = Math.floor(diffMin / 60);
+    if (diffHoras < 24) return `hace ${diffHoras}h`;
+    const diffDias = Math.floor(diffHoras / 24);
+    return `hace ${diffDias}d`;
+  });
 
   // Evaluacion reactiva de la calidad del agua segun norma MINSA (D.S. 031-2010-SA)
   readonly calidadAgua = computed(() => {
     const estado = this.estadoActual();
     if (!estado) {
-      return { estado: 'desconocido', etiqueta: 'Sin datos', color: 'var(--text-muted)' };
+      return { estado: 'desconocido', etiqueta: 'Sin datos', color: 'var(--text-tertiary)' };
     }
 
     const ntu = Number(estado.turbidez_ntu);
     if (estado.alerta_turbidez_alta || ntu > environment.limiteMinsaTurbidezNtu) {
-      return { estado: 'critica', etiqueta: 'Alerta Sanitaria (> 5 UNT)', color: 'var(--color-danger)' };
+      return { estado: 'critica', etiqueta: 'Alerta Sanitaria (> 5 UNT)', color: 'var(--status-crit)' };
     }
     if (ntu > 2.5) {
-      return { estado: 'moderada', etiqueta: 'Calidad Regular (2.5 - 5 UNT)', color: 'var(--color-warning)' };
+      return { estado: 'moderada', etiqueta: 'Calidad Regular (2.5 - 5 UNT)', color: 'var(--status-warn)' };
     }
-    return { estado: 'optima', etiqueta: 'Agua Clara (< 2.5 UNT)', color: 'var(--color-success)' };
+    return { estado: 'optima', etiqueta: 'Agua Clara (< 2.5 UNT)', color: 'var(--status-normal)' };
   });
 
   // Lista calculada de alertas sanitarias activas
@@ -125,8 +152,18 @@ export class SupabaseService {
     this.cargarHistorial(25);
     this.configurarPolling();
 
+    if (typeof window !== 'undefined') {
+      this.relojTimer = window.setInterval(() => {
+        this.ahoraMs.set(Date.now());
+      }, 15000);
+    }
+
     this.destroyRef.onDestroy(() => {
       this.destruirSuscripcion();
+      if (this.relojTimer !== null) {
+        clearInterval(this.relojTimer);
+        this.relojTimer = null;
+      }
     });
   }
 
@@ -168,7 +205,9 @@ export class SupabaseService {
           (payload) => {
             if (payload.new && typeof payload.new === 'object') {
               this.estadoActual.set(payload.new as EstadoTanque);
-              this.ultimaActualizacion.set(new Date());
+              const ahora = new Date();
+              this.ultimaActualizacion.set(ahora);
+              this.ahoraMs.set(ahora.getTime());
               this.conectadoRealtime.set(true);
             }
           }
@@ -201,7 +240,9 @@ export class SupabaseService {
         this.errorConexion.set(error.message);
       } else if (data) {
         this.estadoActual.set(data as EstadoTanque);
-        this.ultimaActualizacion.set(new Date());
+        const ahora = new Date();
+        this.ultimaActualizacion.set(ahora);
+        this.ahoraMs.set(ahora.getTime());
         this.errorConexion.set(null);
       }
     } catch (err: unknown) {
@@ -237,7 +278,7 @@ export class SupabaseService {
     }
   }
 
-  // Configura sondeo continuo como respaldo ante desconexiones de socket
+  // Configura sondeo continuo como respaldo solo cuando WebSocket Realtime no esta activo
   private configurarPolling(): void {
     if (this.pollingTimer) {
       clearInterval(this.pollingTimer);
@@ -247,15 +288,55 @@ export class SupabaseService {
     const intervaloMs = Math.max(5, conf.intervaloRefrescoSeg || 15) * 1000;
 
     this.pollingTimer = window.setInterval(() => {
-      this.cargarEstadoActual();
+      if (!this.conectadoRealtime()) {
+        this.cargarEstadoActual();
+      }
     }, intervaloMs);
+  }
+
+  // Prueba credenciales candidatas en un cliente aislado sin modificar la sesion activa
+  async probarCredenciales(url: string, anonKey: string): Promise<{ ok: boolean; mensaje: string }> {
+    const cleanUrl = url.trim();
+    const cleanKey = anonKey.trim();
+    if (!cleanUrl || !cleanKey) {
+      return { ok: false, mensaje: 'Ingresa la URL y la Anon Key de Supabase.' };
+    }
+
+    try {
+      const tempClient = createClient(cleanUrl, cleanKey, {
+        auth: { persistSession: false }
+      });
+      const { data, error } = await tempClient
+        .from('estado_tanque')
+        .select('id')
+        .eq('id', 1)
+        .single();
+
+      if (error) {
+        return { ok: false, mensaje: error.message };
+      }
+      if (data) {
+        return { ok: true, mensaje: 'OK: Fila id=1 leida exitosamente' };
+      }
+      return { ok: false, mensaje: 'Sin datos de estado en fila id=1' };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { ok: false, mensaje: `Fallo de conexion con Supabase: ${msg}` };
+    }
   }
 
   // Actualiza la configuracion y reinicia las conexiones
   actualizarConfiguracion(nuevaConfig: ConfiguracionSistema): void {
-    this.configuracion.set(nuevaConfig);
+    const configNormalizada: ConfiguracionSistema = {
+      ...nuevaConfig,
+      supabaseUrl: nuevaConfig.supabaseUrl.trim(),
+      supabaseAnonKey: nuevaConfig.supabaseAnonKey.trim(),
+      esp32Ip: nuevaConfig.esp32Ip.trim(),
+      intervaloRefrescoSeg: Math.min(120, Math.max(5, Number(nuevaConfig.intervaloRefrescoSeg) || 15))
+    };
+    this.configuracion.set(configNormalizada);
     try {
-      localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(nuevaConfig));
+      localStorage.setItem(STORAGE_KEY_CONFIG, JSON.stringify(configNormalizada));
     } catch {
       // Ignorar fallo de almacenamiento local
     }
@@ -264,6 +345,7 @@ export class SupabaseService {
     this.inicializarCliente();
     this.iniciarSuscripcion();
     this.cargarEstadoActual();
+    this.cargarHistorial(25);
     this.configurarPolling();
   }
 

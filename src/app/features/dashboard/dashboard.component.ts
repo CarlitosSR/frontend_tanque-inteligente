@@ -23,13 +23,21 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       <section class="station-toolbar">
         <div class="toolbar-left">
           <div class="node-badge">
-            <span class="node-name">AI-Thinker ESP32-CAM</span>
+            <span class="node-name">ESP32 DevKit V1</span>
             <span class="node-id">#ID: 01</span>
           </div>
 
+          <span
+            class="node-link-badge mono-val"
+            [class.online]="supabase.nodoEnLinea()"
+            [class.offline]="estado() && !supabase.nodoEnLinea()"
+          >
+            {{ !estado() ? 'ESPERANDO' : (supabase.nodoEnLinea() ? 'EN LÍNEA' : 'SIN SEÑAL · ' + supabase.tiempoSinSyncTexto()) }}
+          </span>
+
           <div class="sync-time mono-val">
             @if (estado()?.updated_at) {
-              Sync: {{ estado()?.updated_at | date:'HH:mm:ss':'-0500' }} (Peru)
+              Sync: {{ estado()?.updated_at | date:'dd/MM/yyyy HH:mm:ss':'-0500' }} (Peru)
             } @else {
               Esperando enlace...
             }
@@ -65,6 +73,16 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
         <div class="error-strip" role="alert">
           <span class="error-tag">FALLO NUBE</span>
           <span class="error-msg">{{ supabase.errorConexion() }}</span>
+        </div>
+      }
+
+      <!-- Advertencia no intrusiva si la distancia medida cae en zona ciega ultrasonica (< 25 cm) -->
+      @if (estado() && estado()!.distancia_cm > 0 && estado()!.distancia_cm < 25) {
+        <div class="warn-strip" role="status">
+          <span class="warn-tag">ZONA CIEGA JSN-SR04T</span>
+          <span class="warn-msg">
+            Distancia medida ({{ estado()?.distancia_cm | number:'1.2-2' }} cm) menor a 25 cm. Elevar el sensor sobre el nivel maximo.
+          </span>
         </div>
       }
 
@@ -132,11 +150,11 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
             </div>
             <div class="hw-row">
               <span class="hw-label">Canal Realtime</span>
-              <span class="hw-val mono-val">{{ supabase.conectadoRealtime() ? 'WebSocket (ACTIVO)' : 'Polling 15s' }}</span>
+              <span class="hw-val mono-val">{{ supabase.conectadoRealtime() ? 'WebSocket (ACTIVO)' : ('Polling ' + config().intervaloRefrescoSeg + 's') }}</span>
             </div>
             <div class="hw-row">
-              <span class="hw-label">Tolerancia ADC2</span>
-              <span class="hw-val mono-val">WiFi Aislado en Muestreo</span>
+              <span class="hw-label">Canal Analogico ADC1</span>
+              <span class="hw-val mono-val">GPIO33 · WiFi Sin Cortes</span>
             </div>
           </div>
         </aside>
@@ -151,7 +169,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
               [valor]="(estado()?.turbidez_ntu ?? 0) | number:'1.2-2'"
               unidad="UNT"
               [subtitulo]="'Ref. entrada: ' + (estado()?.turbidez_referencia_ntu ?? 0) + ' UNT (Limite: 5.0)'"
-              tagHardware="IO14 TS-300B"
+              tagHardware="GPIO33 TS-300B"
               [estado]="(estado()?.alerta_turbidez_alta || (estado()?.turbidez_ntu ?? 0) > 5) ? 'alerta' : ((estado()?.turbidez_ntu ?? 0) > 2.5 ? 'advertencia' : 'exito')"
             />
 
@@ -181,7 +199,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
               [valor]="(estado()?.altura_agua_cm ?? 0) | number:'1.1-1'"
               unidad="cm"
               [subtitulo]="'Distancia ultrasonica: ' + (estado()?.distancia_cm ?? 0) + ' cm'"
-              tagHardware="IO12/13 JSN-SR04T"
+              tagHardware="GPIO27/26 JSN-SR04T"
               [estado]="estado()?.alerta_nivel_bajo ? 'alerta' : 'normal'"
             />
 
@@ -261,6 +279,28 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       color: var(--text-tertiary);
     }
 
+    .node-link-badge {
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 3px;
+      background-color: var(--bg-surface-raised);
+      border: 1px solid var(--border-medium);
+      color: var(--text-secondary);
+    }
+
+    .node-link-badge.online {
+      background-color: var(--status-normal-bg);
+      border-color: var(--status-normal-border);
+      color: var(--status-normal);
+    }
+
+    .node-link-badge.offline {
+      background-color: var(--status-warn-bg);
+      border-color: var(--status-warn-border);
+      color: var(--status-warn);
+    }
+
     .sync-time {
       font-size: 0.75rem;
       color: var(--text-secondary);
@@ -329,6 +369,28 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       padding: 1px 4px;
       border-radius: 2px;
       background-color: var(--status-crit);
+      color: #000000;
+    }
+
+    .warn-strip {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      background-color: var(--status-warn-bg);
+      border: 1px solid var(--status-warn-border);
+      color: var(--status-warn);
+      font-size: 0.8rem;
+    }
+
+    .warn-tag {
+      font-size: 0.65rem;
+      font-family: var(--font-mono);
+      font-weight: 700;
+      padding: 1px 4px;
+      border-radius: 2px;
+      background-color: var(--status-warn);
       color: #000000;
     }
 
