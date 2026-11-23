@@ -52,7 +52,7 @@ import { DecimalPipe } from '@angular/common';
         <!-- Cuerpo del cilindro del tanque -->
         <div class="cylinder-structure">
           <!-- Cabezal superior: Sensor ultrasonico JSN-SR04T -->
-          <div class="sensor-probe-top" title="Sensor Ultrasonico JSN-SR04T (IO12 / IO13)">
+          <div class="sensor-probe-top" title="Sensor Ultrasonico JSN-SR04T (GPIO27 / GPIO26)">
             <div class="probe-hardware">
               <span class="probe-label">JSN-SR04T</span>
             </div>
@@ -79,7 +79,7 @@ import { DecimalPipe } from '@angular/common';
           </div>
 
           <!-- Base inferior: Sonda de turbidez TS-300B -->
-          <div class="probe-bottom" title="Sensor Optico Turbidez TS-300B (IO14 ADC2)">
+          <div class="probe-bottom" title="Sensor Optico Turbidez TS-300B (GPIO33 ADC1)">
             <span class="probe-label" [style.color]="colorCalidad()">TS-300B: {{ turbidez() | number:'1.2-2' }} UNT</span>
           </div>
         </div>
@@ -407,6 +407,6 @@ export class TankGaugeComponent {
     const ntu = Number(this.turbidez()) || 0;
     if (ntu > 5.0) return 'Turbia (>5 UNT)';
     if (ntu > 2.5) return 'Regular';
-    return 'Potable';
+    return 'Agua clara';
   });
 }
