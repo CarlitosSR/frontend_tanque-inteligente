@@ -305,7 +305,7 @@ import { environment } from '../../../environments/environment';
 
     .settings-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
       gap: 14px;
     }
 
@@ -316,6 +316,7 @@ import { environment } from '../../../environments/environment';
       display: flex;
       flex-direction: column;
       overflow: hidden;
+      min-width: 0;
     }
 
     .panel-head {
@@ -352,6 +353,7 @@ import { environment } from '../../../environments/environment';
       display: flex;
       flex-direction: column;
       gap: 4px;
+      min-width: 0;
     }
 
     .input-block label {
@@ -368,6 +370,9 @@ import { environment } from '../../../environments/environment';
       color: var(--text-primary);
       font-size: 0.82rem;
       min-height: var(--touch-target-min);
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
     }
 
     .input-block input:focus, .input-block select:focus {
@@ -495,6 +500,18 @@ import { environment } from '../../../environments/environment';
     }
 
     @media (max-width: 600px) {
+      .settings-toolbar {
+        padding: 10px 12px;
+      }
+      .toolbar-left {
+        flex-wrap: wrap;
+      }
+      .settings-grid {
+        grid-template-columns: minmax(0, 1fr);
+      }
+      .panel-body {
+        padding: 12px;
+      }
       .settings-actions-bar {
         flex-direction: column-reverse;
         align-items: stretch;

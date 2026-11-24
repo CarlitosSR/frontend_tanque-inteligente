@@ -52,6 +52,7 @@
   font-size: 0.72rem;
   padding: 4px 8px;
   min-height: 30px;
+  max-width: 100%;
 }
 
 .model-select:focus {
@@ -308,7 +309,7 @@ button:disabled {
 
 .quick-prompts {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
   gap: 8px;
   margin-top: 6px;
 }
@@ -346,6 +347,7 @@ button:disabled {
 
 .msg-bubble {
   max-width: 82%;
+  min-width: 0;
   padding: 10px 14px;
   border-radius: 8px;
   border: 1px solid var(--border-medium);
@@ -460,9 +462,46 @@ button:disabled {
 }
 
 @media (max-width: 768px) {
+  .chat-toolbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .context-strip {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .context-items {
+    gap: 8px 10px;
+  }
+
+  .sync-btn {
+    width: 100%;
+    min-height: 38px;
+  }
+
+  .token-gate {
+    padding: 14px;
+    max-width: 100%;
+  }
+
+  .token-input-row input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .gate-actions > button {
+    flex: 1 1 130px;
+  }
+
   .chat-panel {
-    min-height: 420px;
-    height: calc(100dvh - 280px);
+    min-height: 360px;
+    height: clamp(360px, calc(100dvh - 300px), 560px);
+  }
+
+  .messages-area {
+    padding: 12px;
   }
 
   .msg-bubble {

@@ -103,6 +103,12 @@ import { DecimalPipe } from '@angular/common';
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      min-width: 0;
+      width: 100%;
+    }
+
     .scada-tank-card {
       background-color: var(--bg-surface);
       border: 1px solid var(--border-medium);
@@ -323,7 +329,7 @@ import { DecimalPipe } from '@angular/common';
 
     .tank-specs-grid {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 8px;
       padding-top: 8px;
       border-top: 1px solid var(--border-subtle);
@@ -333,6 +339,7 @@ import { DecimalPipe } from '@angular/common';
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
     }
 
     .spec-label {
@@ -350,14 +357,26 @@ import { DecimalPipe } from '@angular/common';
 
     /* Ajuste en pantallas pequenas */
     @media (max-width: 480px) {
+      .scada-tank-card {
+        padding: 12px;
+        gap: 12px;
+      }
       .scada-visual-container {
         height: 240px;
+        gap: 8px;
+      }
+      .scale-ruler {
+        width: 48px;
       }
       .cylinder-structure {
-        width: 140px;
+        width: min(170px, calc(100% - 58px));
       }
       .readout-percent {
         font-size: 1.5rem;
+      }
+      .spec-val {
+        font-size: 0.74rem;
+        overflow-wrap: anywhere;
       }
     }
   `]
