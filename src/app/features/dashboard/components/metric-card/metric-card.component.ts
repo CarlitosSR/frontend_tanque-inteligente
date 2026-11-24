@@ -27,6 +27,12 @@ import { Component, input } from '@angular/core';
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      min-width: 0;
+      width: 100%;
+    }
+
     .scada-metric-card {
       background-color: var(--bg-surface);
       border: 1px solid var(--border-medium);
@@ -37,6 +43,8 @@ import { Component, input } from '@angular/core';
       gap: 8px;
       position: relative;
       overflow: hidden;
+      min-width: 0;
+      height: 100%;
       transition: border-color 0.15s ease;
     }
 
@@ -68,6 +76,7 @@ import { Component, input } from '@angular/core';
       align-items: center;
       justify-content: space-between;
       gap: 6px;
+      flex-wrap: wrap;
     }
 
     .metric-title {
@@ -92,12 +101,14 @@ import { Component, input } from '@angular/core';
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
     }
 
     .reading-row {
       display: flex;
       align-items: baseline;
       gap: 6px;
+      flex-wrap: wrap;
     }
 
     .reading-num {
@@ -122,10 +133,32 @@ import { Component, input } from '@angular/core';
 
     @media (max-width: 480px) {
       .scada-metric-card {
-        padding: 10px 12px;
+        padding: 10px 10px 10px 12px;
+        gap: 6px;
+      }
+      .card-top {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+      .metric-title {
+        font-size: 0.68rem;
+        line-height: 1.25;
+        overflow-wrap: anywhere;
+      }
+      .hardware-tag {
+        font-size: 0.6rem;
+        max-width: 100%;
       }
       .reading-num {
-        font-size: 1.35rem;
+        font-size: 1.25rem;
+      }
+      .reading-unit {
+        font-size: 0.78rem;
+      }
+      .metric-sub {
+        font-size: 0.68rem;
+        overflow-wrap: anywhere;
       }
     }
   `]

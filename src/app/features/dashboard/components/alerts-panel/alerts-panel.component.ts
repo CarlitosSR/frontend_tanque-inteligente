@@ -54,6 +54,12 @@ import { AlertaItem } from '../../../../core/models/tanque.model';
     </div>
   `,
   styles: [`
+    :host {
+      display: block;
+      min-width: 0;
+      width: 100%;
+    }
+
     .annunciator-panel {
       background-color: var(--bg-surface);
       border: 1px solid var(--border-medium);
@@ -78,6 +84,7 @@ import { AlertaItem } from '../../../../core/models/tanque.model';
       display: flex;
       align-items: center;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     .panel-tag {
@@ -237,6 +244,15 @@ import { AlertaItem } from '../../../../core/models/tanque.model';
       font-family: var(--font-mono);
       color: var(--text-tertiary);
       margin-top: 2px;
+    }
+
+    @media (max-width: 480px) {
+      .annunciator-panel {
+        padding: 12px;
+      }
+      .panel-title {
+        font-size: 0.85rem;
+      }
     }
   `]
 })

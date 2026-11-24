@@ -360,6 +360,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       border: 1px solid var(--status-crit-border);
       color: var(--status-crit);
       font-size: 0.8rem;
+      flex-wrap: wrap;
     }
 
     .error-tag {
@@ -370,6 +371,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       border-radius: 2px;
       background-color: var(--status-crit);
       color: #000000;
+      flex-shrink: 0;
     }
 
     .warn-strip {
@@ -382,6 +384,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       border: 1px solid var(--status-warn-border);
       color: var(--status-warn);
       font-size: 0.8rem;
+      flex-wrap: wrap;
     }
 
     .warn-tag {
@@ -392,6 +395,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       border-radius: 2px;
       background-color: var(--status-warn);
       color: #000000;
+      flex-shrink: 0;
     }
 
     .success-strip {
@@ -404,6 +408,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       border: 1px solid var(--status-normal-border);
       color: var(--status-normal);
       font-size: 0.8rem;
+      flex-wrap: wrap;
     }
 
     .ok-tag {
@@ -414,6 +419,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       border-radius: 2px;
       background-color: var(--status-normal);
       color: #000000;
+      flex-shrink: 0;
     }
 
     /* Barra de herramientas LAN */
@@ -485,6 +491,8 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       display: flex;
       flex-direction: column;
       gap: 12px;
+      min-width: 0;
+      width: 100%;
     }
 
     .hardware-card {
@@ -503,6 +511,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       justify-content: space-between;
       gap: 8px;
       font-size: 0.72rem;
+      flex-wrap: wrap;
     }
 
     .hw-label {
@@ -512,12 +521,15 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
     .hw-val {
       color: var(--text-secondary);
       font-size: 0.7rem;
+      text-align: right;
     }
 
     .telemetry-column {
       display: flex;
       flex-direction: column;
       gap: 14px;
+      min-width: 0;
+      width: 100%;
     }
 
     .kpi-grid {
@@ -529,7 +541,7 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
     /* Diseno responsivo en tablets y moviles */
     @media (max-width: 900px) {
       .dashboard-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
       }
       .tank-column {
         max-width: 100%;
@@ -540,11 +552,26 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       .station-toolbar {
         padding: 8px 10px;
       }
+      .toolbar-left {
+        gap: 8px;
+        width: 100%;
+      }
+      .toolbar-right {
+        width: 100%;
+      }
+      .tool-btn {
+        width: 100%;
+        justify-content: center;
+        min-height: 38px;
+      }
       .node-badge {
         font-size: 0.75rem;
       }
+      .sync-time {
+        font-size: 0.72rem;
+      }
       .kpi-grid {
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 8px;
       }
       .lan-actions {
@@ -553,6 +580,12 @@ import { AlertsPanelComponent } from './components/alerts-panel/alerts-panel.com
       .lan-btn {
         flex: 1;
         text-align: center;
+      }
+    }
+
+    @media (max-width: 340px) {
+      .kpi-grid {
+        grid-template-columns: minmax(0, 1fr);
       }
     }
   `]

@@ -553,6 +553,11 @@ import { HistorialTanque } from '../../core/models/tanque.model';
       display: flex;
       flex-direction: column;
       gap: 2px;
+      min-width: 0;
+    }
+
+    .m-metric .status-tag {
+      align-self: flex-start;
     }
 
     .m-label {
@@ -602,6 +607,33 @@ import { HistorialTanque } from '../../core/models/tanque.model';
 
     /* Media query: Alternar tabla desktop por lista movil */
     @media (max-width: 768px) {
+      .history-toolbar {
+        padding: 10px 12px;
+      }
+      .toolbar-right {
+        width: 100%;
+        gap: 6px;
+      }
+      .limit-box {
+        margin-right: auto;
+      }
+      .action-btn {
+        padding: 5px 8px;
+        min-height: 36px;
+      }
+      .stats-strip {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 10px;
+        padding: 10px 12px;
+      }
+      .stat-item {
+        flex-wrap: wrap;
+        gap: 4px;
+      }
+      .card-metrics-row {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
       .desktop-table-container {
         display: none;
       }
@@ -613,6 +645,13 @@ import { HistorialTanque } from '../../core/models/tanque.model';
       }
       .toolbar-title {
         font-size: 0.78rem;
+      }
+    }
+
+    @media (max-width: 340px) {
+      .card-metrics-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
       }
     }
   `]
